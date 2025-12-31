@@ -62,3 +62,10 @@ class SupplierService:
                 return {"success": False, "message": "Erro: Fornecedor não encontrado para exclusão."}
         except Exception as e:
             return {"success": False, "message": f"Erro no banco de dados ao tentar excluir o fornecedor: {e}"}
+
+    def search_suppliers(self, search_field, search_text):
+        try:
+            suppliers = self.supplier_repository.search(search_text, search_field)
+            return {"success": True, "data": suppliers}
+        except Exception as e:
+            return {"success": False, "message": f"Erro ao buscar fornecedores: {e}"}

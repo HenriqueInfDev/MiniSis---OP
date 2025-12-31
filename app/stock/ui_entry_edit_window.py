@@ -2,12 +2,13 @@
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QGroupBox, QFormLayout, QLineEdit,
     QPushButton, QMessageBox, QHeaderView, QTableWidget, QTableWidgetItem,
-    QLabel, QDateEdit, QAbstractItemView, QDateTimeEdit, QComboBox
+    QLabel, QDateEdit, QAbstractItemView, QDateTimeEdit
 )
 from PySide6.QtCore import QDate, Qt, QDateTime
 from ..services.stock_service import StockService
 from ..services.supplier_service import SupplierService
 from ..item.ui_search_window import SearchWindow
+from ..supplier.ui_supplier_search_window import SupplierSearchWindow
 from ..ui_utils import NumericTableWidgetItem, show_error_message
 
 class EntryEditWindow(QWidget):
@@ -16,13 +17,14 @@ class EntryEditWindow(QWidget):
         self.stock_service = StockService()
         self.supplier_service = SupplierService()
         self.current_entry_id = entry_id
+        self.selected_supplier_id = None
         self.search_item_window = None
+        self.search_supplier_window = None
 
         title = f"Editando Entrada #{entry_id}" if entry_id else "Nova Entrada de Insumo"
         self.setWindowTitle(title)
         self.setGeometry(250, 250, 800, 700)
         self.setup_ui()
-        self.populate_suppliers_combo()
 
         if self.current_entry_id:
             self.load_entry_data()
@@ -50,14 +52,23 @@ class EntryEditWindow(QWidget):
         self.typing_date_input = QDateTimeEdit()
         self.typing_date_input.setDateTime(QDateTime.currentDateTime())
         self.typing_date_input.setCalendarPopup(True)
-        self.supplier_combo = QComboBox()
+
+        supplier_layout = QHBoxLayout()
+        self.supplier_display = QLineEdit()
+        self.supplier_display.setReadOnly(True)
+        self.supplier_display.setPlaceholderText("Selecione um fornecedor...")
+        search_supplier_button = QPushButton("Buscar...")
+        search_supplier_button.clicked.connect(self.open_supplier_search)
+        supplier_layout.addWidget(self.supplier_display)
+        supplier_layout.addWidget(search_supplier_button)
+
         self.note_number_input = QLineEdit()
         self.status_display = QLabel("Em Aberto")
 
         form.addRow("ID da Entrada:", self.entry_id_display)
         form.addRow("Data da Entrada:", self.date_input)
         form.addRow("Data de Digitação:", self.typing_date_input)
-        form.addRow("Fornecedor:", self.supplier_combo)
+        form.addRow("Fornecedor:", supplier_layout)
         form.addRow("Número da Nota:", self.note_number_input)
         form.addRow("Status:", self.status_display)
         form_group.setLayout(form)
@@ -93,22 +104,14 @@ class EntryEditWindow(QWidget):
         items_group.setLayout(items_layout)
         self.main_layout.addWidget(items_group)
 
-    def populate_suppliers_combo(self):
-        response = self.supplier_service.get_all_suppliers()
-        if response["success"]:
-            self.supplier_combo.addItem("Selecione...", userData=None)
-            for supplier in response["data"]:
-                self.supplier_combo.addItem(supplier['NOME_FANTASIA'] or supplier['RAZAO_SOCIAL'], userData=supplier['ID'])
-        else:
-            show_error_message(self, response["message"])
-
     def new_entry(self):
         self.current_entry_id = None
+        self.selected_supplier_id = None
         self.setWindowTitle("Nova Entrada de Insumo")
         self.entry_id_display.setText("(Nova)")
         self.date_input.setDate(QDate.currentDate())
         self.typing_date_input.setDateTime(QDateTime.currentDateTime())
-        self.supplier_combo.setCurrentIndex(0)
+        self.supplier_display.clear()
         self.note_number_input.clear()
         self.status_display.setText("Em Aberto")
         self.items_table.setRowCount(0)
@@ -117,8 +120,11 @@ class EntryEditWindow(QWidget):
     def save_entry(self):
         entry_date = self.date_input.date().toString("yyyy-MM-dd")
         typing_date = self.typing_date_input.dateTime().toString("yyyy-MM-dd HH:mm:ss")
-        supplier_id = self.supplier_combo.currentData()
         note_number = self.note_number_input.text()
+
+        if not self.selected_supplier_id:
+            show_error_message(self, "Por favor, selecione um fornecedor.")
+            return
 
         items = []
         for row in range(self.items_table.rowCount()):
@@ -129,13 +135,13 @@ class EntryEditWindow(QWidget):
             })
 
         if self.current_entry_id:
-            response = self.stock_service.update_entry(self.current_entry_id, entry_date, typing_date, supplier_id, note_number, items)
+            response = self.stock_service.update_entry(self.current_entry_id, entry_date, typing_date, self.selected_supplier_id, note_number, items)
             if response["success"]:
                 QMessageBox.information(self, "Sucesso", response["message"])
             else:
                 show_error_message(self, response["message"])
         else:
-            response = self.stock_service.create_entry(entry_date, typing_date, supplier_id, note_number)
+            response = self.stock_service.create_entry(entry_date, typing_date, self.selected_supplier_id, note_number)
             if response["success"]:
                 self.current_entry_id = response["data"]
                 self.stock_service.update_entry_items(self.current_entry_id, items)
@@ -147,31 +153,45 @@ class EntryEditWindow(QWidget):
 
     def load_entry_data(self):
         response = self.stock_service.get_entry_details(self.current_entry_id)
-        if response["success"]:
-            details = response["data"]
-            master = details['master']
-            self.entry_id_display.setText(str(master['ID']))
-            self.date_input.setDate(QDate.fromString(master['DATA_ENTRADA'], "yyyy-MM-dd"))
-            self.typing_date_input.setDateTime(QDateTime.fromString(master['DATA_DIGITACAO'], "yyyy-MM-dd HH:mm:ss"))
-
-            supplier_id = master.get('ID_FORNECEDOR')
-            if supplier_id:
-                index = self.supplier_combo.findData(supplier_id)
-                if index != -1:
-                    self.supplier_combo.setCurrentIndex(index)
-
-            self.note_number_input.setText(master.get('NUMERO_NOTA', ''))
-            self.status_display.setText(master.get('STATUS', ''))
-
-            self.items_table.setRowCount(0)
-            for item in details['items']:
-                self.add_item_to_table(item, is_loading=True)
-
-            if master.get('STATUS') == 'Finalizada':
-                self.set_read_only(True)
-        else:
+        if not response["success"]:
             show_error_message(self, response["message"])
             self.close()
+            return
+
+        details = response["data"]
+        master = details['master']
+        self.entry_id_display.setText(str(master['ID']))
+        self.date_input.setDate(QDate.fromString(master['DATA_ENTRADA'], "yyyy-MM-dd"))
+        self.typing_date_input.setDateTime(QDateTime.fromString(master['DATA_DIGITACAO'], "yyyy-MM-dd HH:mm:ss"))
+
+        self.selected_supplier_id = master.get('ID_FORNECEDOR')
+        if self.selected_supplier_id:
+            supplier_resp = self.supplier_service.get_supplier_by_id(self.selected_supplier_id)
+            if supplier_resp["success"]:
+                supplier_data = supplier_resp["data"]
+                self.supplier_display.setText(supplier_data['NOME_FANTASIA'] or supplier_data['RAZAO_SOCIAL'])
+
+        self.note_number_input.setText(master.get('NUMERO_NOTA', ''))
+        self.status_display.setText(master.get('STATUS', ''))
+
+        self.items_table.setRowCount(0)
+        for item in details['items']:
+            self.add_item_to_table(item, is_loading=True)
+
+        if master.get('STATUS') == 'Finalizada':
+            self.set_read_only(True)
+
+    def open_supplier_search(self):
+        if self.search_supplier_window and self.search_supplier_window.isVisible():
+            self.search_supplier_window.activateWindow()
+            return
+        self.search_supplier_window = SupplierSearchWindow(selection_mode=True)
+        self.search_supplier_window.supplier_selected.connect(self.set_selected_supplier)
+        self.search_supplier_window.show()
+
+    def set_selected_supplier(self, supplier_data):
+        self.selected_supplier_id = supplier_data['ID']
+        self.supplier_display.setText(supplier_data['NOME_FANTASIA'] or supplier_data['RAZAO_SOCIAL'])
 
     def open_item_search(self):
         if self.search_item_window and self.search_item_window.isVisible():
@@ -235,7 +255,12 @@ class EntryEditWindow(QWidget):
     def set_read_only(self, read_only):
         self.date_input.setReadOnly(read_only)
         self.typing_date_input.setReadOnly(read_only)
-        self.supplier_combo.setDisabled(read_only)
+        self.supplier_display.setReadOnly(True) # Always read-only
+        # Find the search button in the layout to disable it
+        supplier_layout = self.main_layout.itemAt(1).widget().layout().itemAt(3, QFormLayout.FieldRole).layout()
+        search_button = supplier_layout.itemAt(1).widget()
+        search_button.setDisabled(read_only)
+
         self.note_number_input.setReadOnly(read_only)
         self.items_table.setEditTriggers(QAbstractItemView.NoEditTriggers if read_only else QAbstractItemView.DoubleClicked)
         self.save_button.setDisabled(read_only)

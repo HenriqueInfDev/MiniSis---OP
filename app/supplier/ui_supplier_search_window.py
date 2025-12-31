@@ -4,16 +4,22 @@ from PySide6.QtWidgets import (
     QPushButton, QTableView, QHeaderView, QAbstractItemView
 )
 from PySide6.QtGui import QStandardItemModel, QStandardItem
+from PySide6.QtCore import Signal
 from ..services.supplier_service import SupplierService
 from ..ui_utils import show_error_message
 from .ui_supplier_edit_window import SupplierEditWindow
 
 class SupplierSearchWindow(QWidget):
-    def __init__(self):
+    supplier_selected = Signal(dict)
+
+    def __init__(self, selection_mode=False):
         super().__init__()
         self.supplier_service = SupplierService()
         self.edit_window = None
-        self.setWindowTitle("Pesquisa de Fornecedores")
+        self.selection_mode = selection_mode
+
+        title = "Selecionar Fornecedor" if self.selection_mode else "Pesquisa de Fornecedores"
+        self.setWindowTitle(title)
         self.setGeometry(200, 200, 800, 600)
         self.setup_ui()
         self.load_suppliers()
@@ -28,11 +34,14 @@ class SupplierSearchWindow(QWidget):
         self.search_input.returnPressed.connect(self.load_suppliers)
         search_button = QPushButton("Buscar")
         search_button.clicked.connect(self.load_suppliers)
-        new_button = QPushButton("Novo")
-        new_button.clicked.connect(self.open_new_supplier_window)
         search_layout.addWidget(self.search_input)
         search_layout.addWidget(search_button)
-        search_layout.addWidget(new_button)
+
+        if not self.selection_mode:
+            new_button = QPushButton("Novo")
+            new_button.clicked.connect(self.open_new_supplier_window)
+            search_layout.addWidget(new_button)
+
         search_group.setLayout(search_layout)
         main_layout.addWidget(search_group)
 
@@ -47,34 +56,62 @@ class SupplierSearchWindow(QWidget):
         self.table_view.verticalHeader().setVisible(False)
         self.table_view.setColumnHidden(0, True)
         self.table_view.horizontalHeader().setSectionResizeMode(1, QHeaderView.Stretch)
-        self.table_view.doubleClicked.connect(self.open_edit_supplier_window)
+        self.table_view.doubleClicked.connect(self.handle_double_click)
         results_layout.addWidget(self.table_view)
         results_group.setLayout(results_layout)
         main_layout.addWidget(results_group)
 
     def load_suppliers(self):
         self.table_model.removeRows(0, self.table_model.rowCount())
-        response = self.supplier_service.get_all_suppliers()
+        search_text = self.search_input.text()
+
+        if search_text:
+            # Assuming a default search by "Nome Fantasia" for simplicity.
+            # Could be expanded with a QComboBox for more fields.
+            response = self.supplier_service.search_suppliers("Nome Fantasia", search_text)
+        else:
+            response = self.supplier_service.get_all_suppliers()
+
         if response["success"]:
             for supplier in response["data"]:
+                supplier_data = {
+                    'ID': supplier['ID'],
+                    'RAZAO_SOCIAL': supplier['RAZAO_SOCIAL'],
+                    'NOME_FANTASIA': supplier['NOME_FANTASIA'],
+                    'CNPJ': supplier.get('CNPJ', ''),
+                    'TELEFONE': supplier.get('TELEFONE', ''),
+                    'EMAIL': supplier.get('EMAIL', '')
+                }
+
+                id_item = QStandardItem()
+                id_item.setData(supplier_data, 0)
+
                 row = [
-                    QStandardItem(str(supplier['ID'])),
-                    QStandardItem(supplier['RAZAO_SOCIAL']),
-                    QStandardItem(supplier['NOME_FANTASIA']),
-                    QStandardItem(supplier['CNPJ']),
-                    QStandardItem(supplier['TELEFONE']),
-                    QStandardItem(supplier['EMAIL'])
+                    id_item,
+                    QStandardItem(supplier_data['RAZAO_SOCIAL']),
+                    QStandardItem(supplier_data['NOME_FANTASIA']),
+                    QStandardItem(supplier_data['CNPJ']),
+                    QStandardItem(supplier_data['TELEFONE']),
+                    QStandardItem(supplier_data['EMAIL'])
                 ]
                 self.table_model.appendRow(row)
         else:
             show_error_message(self, response["message"])
 
+    def handle_double_click(self, model_index):
+        if self.selection_mode:
+            item_data = self.table_model.item(model_index.row(), 0).data()
+            self.supplier_selected.emit(item_data)
+            self.close()
+        else:
+            self.open_edit_supplier_window(model_index)
+
     def open_new_supplier_window(self):
         self.show_edit_window(supplier_id=None)
 
     def open_edit_supplier_window(self, model_index):
-        supplier_id = int(self.table_model.item(model_index.row(), 0).text())
-        self.show_edit_window(supplier_id=supplier_id)
+        item_data = self.table_model.item(model_index.row(), 0).data()
+        self.show_edit_window(supplier_id=item_data['ID'])
 
     def show_edit_window(self, supplier_id):
         if self.edit_window is None:
@@ -88,3 +125,20 @@ class SupplierSearchWindow(QWidget):
     def on_edit_window_closed(self):
         self.edit_window = None
         self.load_suppliers()
+
+    def search_suppliers(self, search_field, search_text):
+        response = self.supplier_service.search_suppliers(search_field, search_text)
+        if response["success"]:
+            self.table_model.removeRows(0, self.table_model.rowCount())
+            for supplier in response["data"]:
+                row = [
+                    QStandardItem(str(supplier['ID'])),
+                    QStandardItem(supplier['RAZAO_SOCIAL']),
+                    QStandardItem(supplier['NOME_FANTASIA']),
+                    QStandardItem(supplier['CNPJ']),
+                    QStandardItem(supplier['TELEFONE']),
+                    QStandardItem(supplier['EMAIL'])
+                ]
+                self.table_model.appendRow(row)
+        else:
+            show_error_message(self, response["message"])
