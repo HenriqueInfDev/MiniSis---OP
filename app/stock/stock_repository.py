@@ -6,13 +6,13 @@ class StockRepository:
     def __init__(self):
         self.db_manager = get_db_manager()
 
-    def create_entry(self, entry_date, typing_date, supplier, note_number):
+    def create_entry(self, entry_date, typing_date, supplier_id, note_number):
         conn = self.db_manager.get_connection()
         try:
             cursor = conn.cursor()
             cursor.execute(
-                "INSERT INTO TENTRADANOTA (DATA_ENTRADA, DATA_DIGITACAO, FORNECEDOR, NUMERO_NOTA, STATUS) VALUES (?, ?, ?, ?, 'Em Aberto')",
-                (entry_date, typing_date, supplier, note_number)
+                "INSERT INTO TENTRADANOTA (DATA_ENTRADA, DATA_DIGITACAO, ID_FORNECEDOR, NUMERO_NOTA, STATUS) VALUES (?, ?, ?, ?, 'Em Aberto')",
+                (entry_date, typing_date, supplier_id, note_number)
             )
             entry_id = cursor.lastrowid
             conn.commit()
@@ -21,12 +21,12 @@ class StockRepository:
             conn.rollback()
             return None
 
-    def update_entry_master(self, entry_id, entry_date, supplier, note_number):
+    def update_entry_master(self, entry_id, entry_date, typing_date, supplier_id, note_number):
         conn = self.db_manager.get_connection()
         try:
             conn.execute(
-                "UPDATE TENTRADANOTA SET DATA_ENTRADA = ?, FORNECEDOR = ?, NUMERO_NOTA = ? WHERE ID = ?",
-                (entry_date, supplier, note_number, entry_id)
+                "UPDATE TENTRADANOTA SET DATA_ENTRADA = ?, DATA_DIGITACAO = ?, ID_FORNECEDOR = ?, NUMERO_NOTA = ? WHERE ID = ?",
+                (entry_date, typing_date, supplier_id, note_number, entry_id)
             )
             conn.commit()
             return True
@@ -65,18 +65,22 @@ class StockRepository:
 
     def list_entries(self, search_term="", search_field="id"):
         conn = self.db_manager.get_connection()
-        query = "SELECT ID, DATA_ENTRADA, DATA_DIGITACAO, FORNECEDOR, NUMERO_NOTA, VALOR_TOTAL, STATUS FROM TENTRADANOTA"
+        query = """
+            SELECT T.ID, T.DATA_ENTRADA, T.DATA_DIGITACAO, F.NOME AS FORNECEDOR, T.NUMERO_NOTA, T.VALOR_TOTAL, T.STATUS
+            FROM TENTRADANOTA T
+            LEFT JOIN TFORNECEDOR F ON T.ID_FORNECEDOR = F.ID
+        """
         params = ()
         if search_term:
-            field_map = {"ID": "ID", "FORNECEDOR": "FORNECEDOR", "Nº NOTA": "NUMERO_NOTA", "STATUS": "STATUS"}
-            column = field_map.get(search_field, "ID")
-            if column == "ID" and search_term.isdigit():
+            field_map = {"ID": "T.ID", "FORNECEDOR": "F.NOME", "Nº NOTA": "T.NUMERO_NOTA", "STATUS": "T.STATUS"}
+            column = field_map.get(search_field, "T.ID")
+            if column == "T.ID" and search_term.isdigit():
                 query += f" WHERE {column} = ?"
                 params = (int(search_term),)
             else:
                 query += f" WHERE {column} LIKE ?"
                 params = (f'%{search_term}%',)
-        query += " ORDER BY ID DESC"
+        query += " ORDER BY T.ID DESC"
         return [dict(row) for row in conn.execute(query, params).fetchall()]
 
     def finalize_entry(self, entry_id):

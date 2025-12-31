@@ -1,18 +1,16 @@
 # app/services/stock_service.py
-from datetime import datetime
 from ..stock.stock_repository import StockRepository
 
 class StockService:
     def __init__(self):
         self.stock_repository = StockRepository()
 
-    def create_entry(self, entry_date, supplier, note_number):
-        if not all([entry_date, supplier, note_number]):
+    def create_entry(self, entry_date, typing_date, supplier_id, note_number):
+        if not all([entry_date, typing_date, supplier_id, note_number]):
             return {"success": False, "message": "Todos os campos do cabeçalho são obrigatórios."}
 
         try:
-            typing_date = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-            entry_id = self.stock_repository.create_entry(entry_date, typing_date, supplier, note_number)
+            entry_id = self.stock_repository.create_entry(entry_date, typing_date, supplier_id, note_number)
             if entry_id:
                 return {"success": True, "data": entry_id, "message": "Nota de entrada criada com sucesso."}
             else:
@@ -20,16 +18,24 @@ class StockService:
         except Exception as e:
             return {"success": False, "message": f"Erro inesperado: {e}"}
 
-    def update_entry(self, entry_id, entry_date, supplier, note_number, items):
-        if not all([entry_id, entry_date, supplier, note_number]):
+    def update_entry(self, entry_id, entry_date, typing_date, supplier_id, note_number, items):
+        if not all([entry_id, entry_date, typing_date, supplier_id, note_number]):
             return {"success": False, "message": "Todos os campos do cabeçalho são obrigatórios."}
 
         try:
-            self.stock_repository.update_entry_master(entry_id, entry_date, supplier, note_number)
+            self.stock_repository.update_entry_master(entry_id, entry_date, typing_date, supplier_id, note_number)
             self.stock_repository.update_entry_items(entry_id, items)
             return {"success": True, "message": "Nota de entrada atualizada com sucesso."}
         except Exception as e:
             return {"success": False, "message": f"Erro ao atualizar nota de entrada: {e}"}
+
+    def update_entry_items(self, entry_id, items):
+        try:
+            self.stock_repository.update_entry_items(entry_id, items)
+            return {"success": True, "message": "Itens da nota de entrada atualizados com sucesso."}
+        except Exception as e:
+            return {"success": False, "message": f"Erro ao atualizar os itens da nota de entrada: {e}"}
+
 
     def get_entry_details(self, entry_id):
         try:

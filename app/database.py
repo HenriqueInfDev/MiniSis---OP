@@ -64,6 +64,29 @@ class DatabaseManager:
             FOREIGN KEY (ID_UNIDADE) REFERENCES TUNIDADE (ID)
         )
         ''')
+        # Tabela de Fornecedores
+        cursor.execute('''
+        CREATE TABLE IF NOT EXISTS TFORNECEDOR (
+            ID INTEGER PRIMARY KEY AUTOINCREMENT,
+            NOME TEXT NOT NULL UNIQUE,
+            CNPJ TEXT,
+            TELEFONE TEXT,
+            EMAIL TEXT
+        )
+        ''')
+        # Tabela de Nota de Entrada (Mestre)
+        cursor.execute('''
+        CREATE TABLE IF NOT EXISTS TENTRADANOTA (
+            ID INTEGER PRIMARY KEY AUTOINCREMENT,
+            ID_FORNECEDOR INTEGER,
+            DATA_ENTRADA TEXT NOT NULL,
+            DATA_DIGITACAO TEXT,
+            NUMERO_NOTA TEXT,
+            VALOR_TOTAL REAL,
+            STATUS TEXT NOT NULL CHECK(STATUS IN ('Em Aberto', 'Finalizada')),
+            FOREIGN KEY (ID_FORNECEDOR) REFERENCES TFORNECEDOR (ID)
+        )
+        ''')
         # Tabela de Composição (Ficha Técnica)
         cursor.execute('''
         CREATE TABLE IF NOT EXISTS TCOMPOSICAO (
@@ -111,25 +134,6 @@ class DatabaseManager:
             FOREIGN KEY (ID_ORDEM_PRODUCAO) REFERENCES TORDEMPRODUCAO (ID)
         )
         ''')
-        # Tabela de Nota de Entrada (Mestre)
-        cursor.execute('''
-        CREATE TABLE IF NOT EXISTS TENTRADANOTA (
-            ID INTEGER PRIMARY KEY AUTOINCREMENT,
-            DATA_ENTRADA TEXT NOT NULL,
-            DATA_DIGITACAO TEXT,
-            FORNECEDOR TEXT,
-            NUMERO_NOTA TEXT,
-            VALOR_TOTAL REAL,
-            STATUS TEXT NOT NULL CHECK(STATUS IN ('Em Aberto', 'Finalizada'))
-        )
-        ''')
-        # Migração para adicionar a coluna DATA_DIGITACAO se não existir
-        cursor.execute("PRAGMA table_info(TENTRADANOTA)")
-        columns = [column[1] for column in cursor.fetchall()]
-        if 'DATA_DIGITACAO' not in columns:
-            cursor.execute('ALTER TABLE TENTRADANOTA ADD COLUMN DATA_DIGITACAO TEXT')
-            # Popula a nova coluna com a data de entrada para registros existentes
-            cursor.execute('UPDATE TENTRADANOTA SET DATA_DIGITACAO = DATA_ENTRADA WHERE DATA_DIGITACAO IS NULL')
         # Tabela de Itens da Nota de Entrada (Detalhe)
         cursor.execute('''
         CREATE TABLE IF NOT EXISTS TENTRADANOTA_ITENS (
@@ -144,7 +148,8 @@ class DatabaseManager:
         )
         ''')
 
-        # Inserção de unidades padrão (com nomes de coluna em maiúsculas)
+        self._run_migrations(cursor)
+
         unidades = [('Grama', 'g'), ('Quilograma', 'kg'), ('Mililitro', 'ml'), ('Litro', 'L'), ('Unidade', 'un')]
         for nome, sigla in unidades:
             cursor.execute("SELECT ID FROM TUNIDADE WHERE NOME = ?", (nome,))
@@ -152,6 +157,55 @@ class DatabaseManager:
                 cursor.execute("INSERT INTO TUNIDADE (NOME, SIGLA) VALUES (?, ?)", (nome, sigla))
 
         self.connection.commit()
+
+    def _run_migrations(self, cursor):
+        cursor.execute("PRAGMA table_info(TENTRADANOTA)")
+        columns_info = {column[1]: {'type': column[2], 'pk': column[5]} for column in cursor.fetchall()}
+
+        if 'DATA_DIGITACAO' not in columns_info:
+            cursor.execute('ALTER TABLE TENTRADANOTA ADD COLUMN DATA_DIGITACAO TEXT')
+            cursor.execute('UPDATE TENTRADANOTA SET DATA_DIGITACAO = DATA_ENTRADA WHERE DATA_DIGITACAO IS NULL')
+
+        if 'FORNECEDOR' in columns_info and columns_info['FORNECEDOR']['type'] == 'TEXT':
+            print("Executando migração de Fornecedor...")
+            try:
+                cursor.execute("SELECT DISTINCT FORNECEDOR FROM TENTRADANOTA WHERE FORNECEDOR IS NOT NULL AND FORNECEDOR != ''")
+                old_suppliers = [row[0] for row in cursor.fetchall()]
+                for supplier_name in old_suppliers:
+                    cursor.execute("INSERT OR IGNORE INTO TFORNECEDOR (NOME) VALUES (?)", (supplier_name,))
+
+                cursor.execute("ALTER TABLE TENTRADANOTA ADD COLUMN ID_FORNECEDOR INTEGER REFERENCES TFORNECEDOR(ID)")
+
+                cursor.execute("SELECT ID, NOME FROM TFORNECEDOR")
+                supplier_map = {name: id for id, name in cursor.fetchall()}
+                for name, id in supplier_map.items():
+                    cursor.execute("UPDATE TENTRADANOTA SET ID_FORNECEDOR = ? WHERE FORNECEDOR = ?", (id, name))
+
+                cursor.execute('''
+                    CREATE TABLE TENTRADANOTA_NEW (
+                        ID INTEGER PRIMARY KEY AUTOINCREMENT,
+                        ID_FORNECEDOR INTEGER,
+                        DATA_ENTRADA TEXT NOT NULL,
+                        DATA_DIGITACAO TEXT,
+                        NUMERO_NOTA TEXT,
+                        VALOR_TOTAL REAL,
+                        STATUS TEXT NOT NULL,
+                        FOREIGN KEY (ID_FORNECEDOR) REFERENCES TFORNECEDOR (ID)
+                    )
+                ''')
+
+                cursor.execute('''
+                    INSERT INTO TENTRADANOTA_NEW (ID, ID_FORNECEDOR, DATA_ENTRADA, DATA_DIGITACAO, NUMERO_NOTA, VALOR_TOTAL, STATUS)
+                    SELECT ID, ID_FORNECEDOR, DATA_ENTRADA, DATA_DIGITACAO, NUMERO_NOTA, VALOR_TOTAL, STATUS FROM TENTRADANOTA
+                ''')
+
+                cursor.execute("DROP TABLE TENTRADANOTA")
+                cursor.execute("ALTER TABLE TENTRADANOTA_NEW RENAME TO TENTRADANOTA")
+                print("Migração de Fornecedor concluída com sucesso.")
+            except sqlite3.Error as e:
+                print(f"Erro durante a migração de fornecedor: {e}")
+                self.connection.rollback()
+                raise e
 
 def get_db_manager():
     return DatabaseManager()

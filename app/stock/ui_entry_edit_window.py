@@ -2,10 +2,11 @@
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QGroupBox, QFormLayout, QLineEdit,
     QPushButton, QMessageBox, QHeaderView, QTableWidget, QTableWidgetItem,
-    QLabel, QDateEdit, QAbstractItemView, QDateTimeEdit
+    QLabel, QDateEdit, QAbstractItemView, QDateTimeEdit, QComboBox
 )
 from PySide6.QtCore import QDate, Qt, QDateTime
 from ..services.stock_service import StockService
+from ..services.supplier_service import SupplierService
 from ..item.ui_search_window import SearchWindow
 from ..ui_utils import NumericTableWidgetItem, show_error_message
 
@@ -13,6 +14,7 @@ class EntryEditWindow(QWidget):
     def __init__(self, entry_id=None):
         super().__init__()
         self.stock_service = StockService()
+        self.supplier_service = SupplierService()
         self.current_entry_id = entry_id
         self.search_item_window = None
 
@@ -20,6 +22,7 @@ class EntryEditWindow(QWidget):
         self.setWindowTitle(title)
         self.setGeometry(250, 250, 800, 700)
         self.setup_ui()
+        self.populate_suppliers_combo()
 
         if self.current_entry_id:
             self.load_entry_data()
@@ -45,15 +48,16 @@ class EntryEditWindow(QWidget):
         self.date_input = QDateEdit(calendarPopup=True)
         self.date_input.setDate(QDate.currentDate())
         self.typing_date_input = QDateTimeEdit()
-        self.typing_date_input.setReadOnly(True)
-        self.supplier_input = QLineEdit()
+        self.typing_date_input.setDateTime(QDateTime.currentDateTime())
+        self.typing_date_input.setCalendarPopup(True)
+        self.supplier_combo = QComboBox()
         self.note_number_input = QLineEdit()
         self.status_display = QLabel("Em Aberto")
 
         form.addRow("ID da Entrada:", self.entry_id_display)
         form.addRow("Data da Entrada:", self.date_input)
         form.addRow("Data de Digitação:", self.typing_date_input)
-        form.addRow("Fornecedor:", self.supplier_input)
+        form.addRow("Fornecedor:", self.supplier_combo)
         form.addRow("Número da Nota:", self.note_number_input)
         form.addRow("Status:", self.status_display)
         form_group.setLayout(form)
@@ -67,6 +71,7 @@ class EntryEditWindow(QWidget):
         self.items_table.verticalHeader().setVisible(False)
         self.items_table.setSelectionBehavior(QAbstractItemView.SelectRows)
         self.items_table.setColumnHidden(0, True)
+        self.items_table.setStyleSheet("QTableView::item:selected { background-color: #D3D3D3; color: black; }")
         header = self.items_table.horizontalHeader()
         header.setSectionResizeMode(QHeaderView.ResizeToContents)
         header.setSectionResizeMode(1, QHeaderView.Stretch)
@@ -88,21 +93,31 @@ class EntryEditWindow(QWidget):
         items_group.setLayout(items_layout)
         self.main_layout.addWidget(items_group)
 
+    def populate_suppliers_combo(self):
+        response = self.supplier_service.get_all_suppliers()
+        if response["success"]:
+            self.supplier_combo.addItem("Selecione...", userData=None)
+            for supplier in response["data"]:
+                self.supplier_combo.addItem(supplier['NOME'], userData=supplier['ID'])
+        else:
+            show_error_message(self, response["message"])
+
     def new_entry(self):
         self.current_entry_id = None
         self.setWindowTitle("Nova Entrada de Insumo")
         self.entry_id_display.setText("(Nova)")
         self.date_input.setDate(QDate.currentDate())
         self.typing_date_input.setDateTime(QDateTime.currentDateTime())
-        self.supplier_input.clear()
+        self.supplier_combo.setCurrentIndex(0)
         self.note_number_input.clear()
         self.status_display.setText("Em Aberto")
         self.items_table.setRowCount(0)
         self.set_read_only(False)
 
     def save_entry(self):
-        date = self.date_input.date().toString("yyyy-MM-dd")
-        supplier = self.supplier_input.text()
+        entry_date = self.date_input.date().toString("yyyy-MM-dd")
+        typing_date = self.typing_date_input.dateTime().toString("yyyy-MM-dd HH:mm:ss")
+        supplier_id = self.supplier_combo.currentData()
         note_number = self.note_number_input.text()
 
         items = []
@@ -114,16 +129,16 @@ class EntryEditWindow(QWidget):
             })
 
         if self.current_entry_id:
-            response = self.stock_service.update_entry(self.current_entry_id, date, supplier, note_number, items)
+            response = self.stock_service.update_entry(self.current_entry_id, entry_date, typing_date, supplier_id, note_number, items)
             if response["success"]:
                 QMessageBox.information(self, "Sucesso", response["message"])
             else:
                 show_error_message(self, response["message"])
         else:
-            response = self.stock_service.create_entry(date, supplier, note_number)
+            response = self.stock_service.create_entry(entry_date, typing_date, supplier_id, note_number)
             if response["success"]:
                 self.current_entry_id = response["data"]
-                self.stock_service.update_entry(self.current_entry_id, date, supplier, note_number, items)
+                self.stock_service.update_entry_items(self.current_entry_id, items)
                 self.setWindowTitle(f"Editando Entrada #{self.current_entry_id}")
                 self.entry_id_display.setText(str(self.current_entry_id))
                 QMessageBox.information(self, "Sucesso", response["message"])
@@ -138,7 +153,13 @@ class EntryEditWindow(QWidget):
             self.entry_id_display.setText(str(master['ID']))
             self.date_input.setDate(QDate.fromString(master['DATA_ENTRADA'], "yyyy-MM-dd"))
             self.typing_date_input.setDateTime(QDateTime.fromString(master['DATA_DIGITACAO'], "yyyy-MM-dd HH:mm:ss"))
-            self.supplier_input.setText(master.get('FORNECEDOR', ''))
+
+            supplier_id = master.get('ID_FORNECEDOR')
+            if supplier_id:
+                index = self.supplier_combo.findData(supplier_id)
+                if index != -1:
+                    self.supplier_combo.setCurrentIndex(index)
+
             self.note_number_input.setText(master.get('NUMERO_NOTA', ''))
             self.status_display.setText(master.get('STATUS', ''))
 
@@ -166,13 +187,7 @@ class EntryEditWindow(QWidget):
                 QMessageBox.warning(self, "Atenção", "Este insumo já está na lista.")
                 return
 
-        item = {
-            'ID_INSUMO': item_data['ID'],
-            'DESCRICAO': item_data['DESCRICAO'],
-            'SIGLA': item_data['SIGLA'],
-            'QUANTIDADE': 1.0,
-            'VALOR_UNITARIO': 0.0
-        }
+        item = { 'ID_INSUMO': item_data['ID'], 'DESCRICAO': item_data['DESCRICAO'], 'SIGLA': item_data['SIGLA'], 'QUANTIDADE': 1.0, 'VALOR_UNITARIO': 0.0 }
         self.add_item_to_table(item)
 
     def add_item_to_table(self, item, is_loading=False):
@@ -185,13 +200,11 @@ class EntryEditWindow(QWidget):
         self.items_table.setItem(row, 2, QTableWidgetItem(item['SIGLA']))
         self.items_table.setItem(row, 3, NumericTableWidgetItem(str(item['QUANTIDADE'])))
         self.items_table.setItem(row, 4, NumericTableWidgetItem(f"{item['VALOR_UNITARIO']:.2f}"))
-
         total = item['QUANTIDADE'] * item['VALOR_UNITARIO']
         self.items_table.setItem(row, 5, NumericTableWidgetItem(f"{total:.2f}"))
 
-        self.items_table.item(row, 1).setFlags(self.items_table.item(row, 1).flags() & ~Qt.ItemIsEditable)
-        self.items_table.item(row, 2).setFlags(self.items_table.item(row, 2).flags() & ~Qt.ItemIsEditable)
-        self.items_table.item(row, 5).setFlags(self.items_table.item(row, 5).flags() & ~Qt.ItemIsEditable)
+        for col in [1, 2, 5]:
+             self.items_table.item(row, col).setFlags(self.items_table.item(row, col).flags() & ~Qt.ItemIsEditable)
 
         self.items_table.blockSignals(False)
         if not is_loading:
@@ -221,11 +234,10 @@ class EntryEditWindow(QWidget):
 
     def set_read_only(self, read_only):
         self.date_input.setReadOnly(read_only)
-        self.supplier_input.setReadOnly(read_only)
+        self.typing_date_input.setReadOnly(read_only)
+        self.supplier_combo.setDisabled(read_only)
         self.note_number_input.setReadOnly(read_only)
-        self.items_table.setEditTriggers(
-            QAbstractItemView.NoEditTriggers if read_only else QAbstractItemView.DoubleClicked
-        )
+        self.items_table.setEditTriggers(QAbstractItemView.NoEditTriggers if read_only else QAbstractItemView.DoubleClicked)
         self.save_button.setDisabled(read_only)
         self.finalize_button.setDisabled(read_only)
         self.add_item_button.setDisabled(read_only)
@@ -237,9 +249,7 @@ class EntryEditWindow(QWidget):
             return
 
         reply = QMessageBox.question(
-            self, "Confirmar Finalização",
-            "Você tem certeza que deseja finalizar esta entrada?\n"
-            "Esta ação atualizará o estoque e o custo dos insumos e não poderá ser desfeita.",
+            self, "Confirmar Finalização", "Você tem certeza que deseja finalizar esta entrada?\nEsta ação atualizará o estoque e o custo dos insumos e não poderá ser desfeita.",
             QMessageBox.Yes | QMessageBox.No, QMessageBox.No
         )
 
