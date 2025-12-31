@@ -4,7 +4,7 @@ from PySide6.QtWidgets import (
     QPushButton, QTableView, QHeaderView, QAbstractItemView
 )
 from PySide6.QtGui import QStandardItemModel, QStandardItem
-from PySide6.QtCore import Signal
+from PySide6.QtCore import Signal, Qt
 from ..services.supplier_service import SupplierService
 from ..ui_utils import show_error_message
 from .ui_supplier_edit_window import SupplierEditWindow
@@ -86,8 +86,8 @@ class SupplierSearchWindow(QWidget):
                     'EMAIL': _safe_str(supplier['EMAIL'])
                 }
 
-                id_item = QStandardItem()
-                id_item.setData(supplier_data, 0)
+                id_item = QStandardItem(str(supplier['ID']))
+                id_item.setData(supplier_data, Qt.UserRole)
 
                 row = [
                     id_item,
@@ -102,19 +102,18 @@ class SupplierSearchWindow(QWidget):
             show_error_message(self, response["message"])
 
     def handle_double_click(self, model_index):
+        item_data = self.table_model.item(model_index.row(), 0).data(Qt.UserRole)
         if self.selection_mode:
-            item_data = self.table_model.item(model_index.row(), 0).data()
             self.supplier_selected.emit(item_data)
             self.close()
         else:
-            self.open_edit_supplier_window(model_index)
+            self.open_edit_supplier_window(item_data['ID'])
 
     def open_new_supplier_window(self):
         self.show_edit_window(supplier_id=None)
 
-    def open_edit_supplier_window(self, model_index):
-        item_data = self.table_model.item(model_index.row(), 0).data()
-        self.show_edit_window(supplier_id=item_data['ID'])
+    def open_edit_supplier_window(self, supplier_id):
+        self.show_edit_window(supplier_id=supplier_id)
 
     def show_edit_window(self, supplier_id):
         if self.edit_window is None:
