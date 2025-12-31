@@ -52,7 +52,7 @@ class SupplierEditWindow(QWidget):
         self.nome_fantasia_input = QLineEdit()
 
         self.cnpj_input = QLineEdit()
-        self.cnpj_input.setValidator(QRegularExpressionValidator(QRegularExpression("[0-9]+")))
+        self.cnpj_input.setValidator(QRegularExpressionValidator(QRegularExpression("[0-9./-]+")))
         self.cnpj_input.textChanged.connect(self.format_cnpj_cpf)
 
         self.phone_input = QLineEdit()
@@ -95,18 +95,56 @@ class SupplierEditWindow(QWidget):
     def format_cnpj_cpf(self, text):
         cleaned_text = ''.join(filter(str.isdigit, text))
 
+        self.cnpj_input.blockSignals(True)
+
         if len(cleaned_text) <= 11:
-            self.cnpj_input.setInputMask("000.000.000-00")
+            if len(cleaned_text) > 9:
+                formatted_text = f"{cleaned_text[:3]}.{cleaned_text[3:6]}.{cleaned_text[6:9]}-{cleaned_text[9:]}"
+            elif len(cleaned_text) > 6:
+                formatted_text = f"{cleaned_text[:3]}.{cleaned_text[3:6]}.{cleaned_text[6:]}"
+            elif len(cleaned_text) > 3:
+                formatted_text = f"{cleaned_text[:3]}.{cleaned_text[3:]}"
+            else:
+                formatted_text = cleaned_text
         else:
-            self.cnpj_input.setInputMask("00.000.000/0000-00")
+            if len(cleaned_text) > 12:
+                formatted_text = f"{cleaned_text[:2]}.{cleaned_text[2:5]}.{cleaned_text[5:8]}/{cleaned_text[8:12]}-{cleaned_text[12:]}"
+            elif len(cleaned_text) > 8:
+                formatted_text = f"{cleaned_text[:2]}.{cleaned_text[2:5]}.{cleaned_text[5:8]}/{cleaned_text[8:]}"
+            elif len(cleaned_text) > 5:
+                formatted_text = f"{cleaned_text[:2]}.{cleaned_text[2:5]}.{cleaned_text[5:]}"
+            elif len(cleaned_text) > 2:
+                formatted_text = f"{cleaned_text[:2]}.{cleaned_text[2:]}"
+            else:
+                formatted_text = cleaned_text
+
+        self.cnpj_input.setText(formatted_text)
+        self.cnpj_input.setCursorPosition(len(formatted_text))
+        self.cnpj_input.blockSignals(False)
 
     def format_phone_number(self, text):
         cleaned_text = ''.join(filter(str.isdigit, text))
 
+        self.phone_input.blockSignals(True)
+
         if len(cleaned_text) <= 10:
-            self.phone_input.setInputMask("(00) 0000-0000")
+            if len(cleaned_text) > 6:
+                formatted_text = f"({cleaned_text[:2]}) {cleaned_text[2:6]}-{cleaned_text[6:]}"
+            elif len(cleaned_text) > 2:
+                formatted_text = f"({cleaned_text[:2]}) {cleaned_text[2:]}"
+            else:
+                formatted_text = cleaned_text
         else:
-            self.phone_input.setInputMask("(00) 00000-0000")
+            if len(cleaned_text) > 7:
+                formatted_text = f"({cleaned_text[:2]}) {cleaned_text[2:7]}-{cleaned_text[7:]}"
+            elif len(cleaned_text) > 2:
+                formatted_text = f"({cleaned_text[:2]}) {cleaned_text[2:]}"
+            else:
+                formatted_text = cleaned_text
+
+        self.phone_input.setText(formatted_text)
+        self.phone_input.setCursorPosition(len(formatted_text))
+        self.phone_input.blockSignals(False)
 
     def fetch_address_from_cep(self):
         cep = self.cep_input.text().replace("-", "").strip()
@@ -146,8 +184,8 @@ class SupplierEditWindow(QWidget):
     def save_supplier(self):
         razao_social = self.razao_social_input.text()
         nome_fantasia = self.nome_fantasia_input.text()
-        cnpj = ''.join(filter(str.isdigit, self.cnpj_input.text()))
-        phone = ''.join(filter(str.isdigit, self.phone_input.text()))
+        cnpj = self.cnpj_input.text()
+        phone = self.phone_input.text()
         email = self.email_input.text()
         address = {
             'logradouro': self.logradouro_input.text(),
@@ -156,7 +194,7 @@ class SupplierEditWindow(QWidget):
             'bairro': self.bairro_input.text(),
             'cidade': self.cidade_input.text(),
             'uf': self.uf_input.text(),
-            'cep': self.cep_input.text().replace("-", "")
+            'cep': self.cep_input.text()
         }
 
         if self.current_supplier_id:
