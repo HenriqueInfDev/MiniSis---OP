@@ -7,7 +7,7 @@ class ItemRepository:
     def __init__(self):
         self.db_manager = get_db_manager()
 
-    def add(self, description, item_type, unit_id):
+    def add(self, description, item_type, unit_id, supplier_id=None):
         """
         Adiciona um novo item na tabela TITEM.
         Retorna o ID do novo item em caso de sucesso, ou None em caso de falha.
@@ -16,8 +16,8 @@ class ItemRepository:
             conn = self.db_manager.get_connection()
             cursor = conn.cursor()
             cursor.execute(
-                'INSERT INTO TITEM (DESCRICAO, TIPO_ITEM, ID_UNIDADE) VALUES (?, ?, ?)',
-                (description, item_type, unit_id)
+                'INSERT INTO TITEM (DESCRICAO, TIPO_ITEM, ID_UNIDADE, ID_FORNECEDOR_PADRAO) VALUES (?, ?, ?, ?)',
+                (description, item_type, unit_id, supplier_id)
             )
             new_id = cursor.lastrowid
             conn.commit()
@@ -27,32 +27,38 @@ class ItemRepository:
             return None
 
     def get_all(self):
-        """Lista todos os itens com seus saldos e custos."""
+        """Lista todos os itens com seus saldos, custos e fornecedor padrão."""
         conn = self.db_manager.get_connection()
         return conn.execute('''
-            SELECT I.ID, I.DESCRICAO, I.TIPO_ITEM, U.SIGLA, I.SALDO_ESTOQUE, I.CUSTO_MEDIO
+            SELECT I.ID, I.DESCRICAO, I.TIPO_ITEM, U.SIGLA, I.SALDO_ESTOQUE, I.CUSTO_MEDIO, F.NOME AS NOME_FORNECEDOR
             FROM TITEM I
             JOIN TUNIDADE U ON I.ID_UNIDADE = U.ID
+            LEFT JOIN TFORNECEDOR F ON I.ID_FORNECEDOR_PADRAO = F.ID
             ORDER BY I.ID
         ''').fetchall()
 
     def get_by_id(self, item_id):
-        """Busca um item específico pelo seu ID."""
+        """Busca um item específico pelo seu ID, incluindo o nome do fornecedor."""
         conn = self.db_manager.get_connection()
-        return conn.execute('SELECT * FROM TITEM WHERE ID = ?', (item_id,)).fetchone()
+        return conn.execute('''
+            SELECT I.*, F.NOME AS NOME_FORNECEDOR
+            FROM TITEM I
+            LEFT JOIN TFORNECEDOR F ON I.ID_FORNECEDOR_PADRAO = F.ID
+            WHERE I.ID = ?
+        ''', (item_id,)).fetchone()
 
     def list_units(self):
         """Lista todas as unidades de medida disponíveis."""
         conn = self.db_manager.get_connection()
         return conn.execute('SELECT ID, NOME, SIGLA FROM TUNIDADE').fetchall()
 
-    def update(self, item_id, description, item_type, unit_id):
+    def update(self, item_id, description, item_type, unit_id, supplier_id=None):
         """Atualiza os dados de um item existente."""
         try:
             conn = self.db_manager.get_connection()
             conn.execute(
-                'UPDATE TITEM SET DESCRICAO = ?, TIPO_ITEM = ?, ID_UNIDADE = ? WHERE ID = ?',
-                (description, item_type, unit_id, item_id)
+                'UPDATE TITEM SET DESCRICAO = ?, TIPO_ITEM = ?, ID_UNIDADE = ?, ID_FORNECEDOR_PADRAO = ? WHERE ID = ?',
+                (description, item_type, unit_id, supplier_id, item_id)
             )
             conn.commit()
             return True
@@ -109,9 +115,10 @@ class ItemRepository:
         """Busca itens por um campo específico."""
         conn = self.db_manager.get_connection()
         base_query = '''
-            SELECT I.ID, I.DESCRICAO, I.TIPO_ITEM, U.SIGLA, I.SALDO_ESTOQUE, I.CUSTO_MEDIO
+            SELECT I.ID, I.DESCRICAO, I.TIPO_ITEM, U.SIGLA, I.SALDO_ESTOQUE, I.CUSTO_MEDIO, F.NOME AS NOME_FORNECEDOR
             FROM TITEM I
             JOIN TUNIDADE U ON I.ID_UNIDADE = U.ID
+            LEFT JOIN TFORNECEDOR F ON I.ID_FORNECEDOR_PADRAO = F.ID
         '''
         params = ()
         if search_type == 'ID':

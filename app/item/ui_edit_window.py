@@ -8,7 +8,9 @@ from PySide6.QtCore import Qt
 from ..services.item_service import ItemService
 from ..production import composition_operations # To be refactored later
 from .ui_search_window import SearchWindow
+from ..supplier.ui_search_window import SearchSupplierWindow
 from ..ui_utils import NumericTableWidgetItem, show_error_message
+
 
 class EditWindow(QWidget):
     def __init__(self, item_id=None):
@@ -16,6 +18,7 @@ class EditWindow(QWidget):
         self.item_service = ItemService()
         self.current_item_id = item_id
         self.has_unsaved_changes = False
+        self.selected_supplier_id = None
 
         self.setWindowTitle(f"Editando Item #{item_id}" if item_id else "Novo Item")
         self.setGeometry(200, 200, 700, 600)
@@ -43,7 +46,8 @@ class EditWindow(QWidget):
         # Conectar sinal da ComboBox de tipo
         self.type_combo.currentTextChanged.connect(self.toggle_composition_tab)
 
-        self.search_window = None # Para manter a referência da janela de busca
+        self.search_window = None  # Para manter a referência da janela de busca
+        self.supplier_search_window = None # Para a busca de fornecedores
 
         # Conectar sinais para detectar alterações
         self.description_input.textChanged.connect(self._set_unsaved_changes)
@@ -51,7 +55,7 @@ class EditWindow(QWidget):
         self.unit_combo.currentIndexChanged.connect(self._set_unsaved_changes)
         # A alteração da composição será tratada nos métodos add/remove
 
-    def _set_unsaved_changes(self):
+    def _set_unsaved_changes(self, *args):
         """Marca o estado como 'não salvo' e atualiza o título da janela."""
         if not self.has_unsaved_changes:
             self.has_unsaved_changes = True
@@ -114,9 +118,20 @@ class EditWindow(QWidget):
         self.type_combo.addItems(["Insumo", "Produto", "Ambos"])
         self.unit_combo = QComboBox()
 
+        # --- Campo Fornecedor ---
+        supplier_layout = QHBoxLayout()
+        self.supplier_display = QLineEdit()
+        self.supplier_display.setPlaceholderText("Selecione um fornecedor padrão...")
+        self.supplier_display.setReadOnly(True)
+        search_supplier_button = QPushButton("Buscar...")
+        search_supplier_button.clicked.connect(self.open_supplier_search)
+        supplier_layout.addWidget(self.supplier_display)
+        supplier_layout.addWidget(search_supplier_button)
+
         layout.addRow("Descrição:", self.description_input)
         layout.addRow("Tipo de Item:", self.type_combo)
         layout.addRow("Unidade:", self.unit_combo)
+        layout.addRow("Fornecedor Padrão:", supplier_layout)
 
         self.tab_widget.addTab(main_widget, "Principal")
 
@@ -219,10 +234,33 @@ class EditWindow(QWidget):
                 if unit_index != -1:
                     self.unit_combo.setCurrentIndex(unit_index)
 
+                # Carrega o fornecedor
+                if item.get('ID_FORNECEDOR_PADRAO'):
+                    self.selected_supplier_id = item['ID_FORNECEDOR_PADRAO']
+                    # O nome do fornecedor precisará ser buscado ou já estar no 'item'
+                    # Assumindo que o nome do fornecedor é passado no dicionário do item
+                    self.supplier_display.setText(item.get('NOME_FORNECEDOR', 'Não encontrado'))
+
                 self.load_composition_data()
 
         # Atualiza a visibilidade da aba com base no tipo carregado
         self.toggle_composition_tab()
+
+    def open_supplier_search(self):
+        """Abre a janela de busca de fornecedores."""
+        if self.supplier_search_window and self.supplier_search_window.isVisible():
+            self.supplier_search_window.activateWindow()
+            return
+
+        self.supplier_search_window = SearchSupplierWindow()
+        self.supplier_search_window.supplier_selected.connect(self.set_selected_supplier)
+        self.supplier_search_window.show()
+
+    def set_selected_supplier(self, supplier_data):
+        """Recebe o fornecedor selecionado e atualiza a UI."""
+        self.selected_supplier_id = supplier_data['ID']
+        self.supplier_display.setText(supplier_data['NOME'])
+        self._set_unsaved_changes()
 
     def load_composition_data(self):
         self.composition_table.setRowCount(0)
@@ -385,6 +423,8 @@ class EditWindow(QWidget):
         self.description_input.clear()
         self.type_combo.setCurrentIndex(0)
         self.unit_combo.setCurrentIndex(0)
+        self.supplier_display.clear()
+        self.selected_supplier_id = None
         self.composition_table.setRowCount(0)
         self.update_total_cost()
         self.toggle_composition_tab()
@@ -401,6 +441,7 @@ class EditWindow(QWidget):
         description = self.description_input.text()
         item_type = self.type_combo.currentText()
         unit_id = self.unit_combo.currentData()
+        supplier_id = self.selected_supplier_id
 
         if not description or unit_id is None:
             QMessageBox.warning(self, "Atenção", "Descrição e Unidade são obrigatórios.")
@@ -408,14 +449,14 @@ class EditWindow(QWidget):
 
         # Salva o item principal
         if self.current_item_id is None:  # Novo item
-            response = self.item_service.add_item(description, item_type, unit_id)
+            response = self.item_service.add_item(description, item_type, unit_id, supplier_id)
             if response["success"]:
                 self.current_item_id = response["data"]
             else:
                 show_error_message(self, response["message"])
                 return
         else:  # Item existente
-            response = self.item_service.update_item(self.current_item_id, description, item_type, unit_id)
+            response = self.item_service.update_item(self.current_item_id, description, item_type, unit_id, supplier_id)
             if not response["success"]:
                 show_error_message(self, response["message"])
                 return

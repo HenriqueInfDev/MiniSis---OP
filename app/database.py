@@ -29,6 +29,7 @@ class DatabaseManager:
         self.connection = sqlite3.connect(self.db_path)
         self.connection.row_factory = sqlite3.Row
         self._create_tables()
+        self._update_schema() # Adiciona colunas se necessário
         print(f"Banco de dados inicializado em: {self.db_path}")
 
     def get_connection(self):
@@ -61,7 +62,17 @@ class DatabaseManager:
             ID_UNIDADE INTEGER NOT NULL,
             SALDO_ESTOQUE REAL NOT NULL DEFAULT 0,
             CUSTO_MEDIO REAL NOT NULL DEFAULT 0,
-            FOREIGN KEY (ID_UNIDADE) REFERENCES TUNIDADE (ID)
+            ID_FORNECEDOR_PADRAO INTEGER,
+            FOREIGN KEY (ID_UNIDADE) REFERENCES TUNIDADE (ID),
+            FOREIGN KEY (ID_FORNECEDOR_PADRAO) REFERENCES TFORNECEDOR (ID)
+        )
+        ''')
+        # Tabela de Fornecedores
+        cursor.execute('''
+        CREATE TABLE IF NOT EXISTS TFORNECEDOR (
+            ID INTEGER PRIMARY KEY AUTOINCREMENT,
+            NOME TEXT NOT NULL UNIQUE,
+            CONTATO TEXT
         )
         ''')
         # Tabela de Composição (Ficha Técnica)
@@ -144,6 +155,24 @@ class DatabaseManager:
                 cursor.execute("INSERT INTO TUNIDADE (NOME, SIGLA) VALUES (?, ?)", (nome, sigla))
 
         self.connection.commit()
+
+    def _update_schema(self):
+        """Adiciona colunas que podem ter sido introduzidas em versões mais novas."""
+        cursor = self.connection.cursor()
+
+        # Verificar e adicionar a coluna ID_FORNECEDOR_PADRAO na TITEM
+        cursor.execute("PRAGMA table_info(TITEM)")
+        columns = [column['name'] for column in cursor.fetchall()]
+        if 'ID_FORNECEDOR_PADRAO' not in columns:
+            cursor.execute('''
+                ALTER TABLE TITEM
+                ADD COLUMN ID_FORNECEDOR_PADRAO INTEGER
+                REFERENCES TFORNECEDOR(ID)
+            ''')
+            print("Coluna 'ID_FORNECEDOR_PADRAO' adicionada à tabela 'TITEM'.")
+
+        self.connection.commit()
+
 
 def get_db_manager():
     return DatabaseManager()

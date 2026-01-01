@@ -10,6 +10,7 @@ def run_verification():
     display = ":99"
     xvfb_cmd = f"Xvfb {display} -screen 0 1280x1024x24"
     screenshot_path = "/home/jules/verification/verification.png"
+    log_path = "/home/jules/verification/app.log"
 
     # Create the verification directory
     os.makedirs(os.path.dirname(screenshot_path), exist_ok=True)
@@ -22,18 +23,20 @@ def run_verification():
         env = os.environ.copy()
         env["DISPLAY"] = display
 
-        # Launch the application
-        app_proc = subprocess.Popen(["python", "main.py"], env=env)
+        # Open log file
+        with open(log_path, "w") as log_file:
+            # Launch the application
+            app_proc = subprocess.Popen(["python", "main.py"], env=env, stdout=log_file, stderr=subprocess.STDOUT)
 
-        # Give the application time to start and render
-        time.sleep(5)
+            # Give the application time to start and render
+            time.sleep(10) # Increased sleep time
 
-        # Take the screenshot
-        subprocess.run(["scrot", screenshot_path, "-d", "1"], env=env)
+            # Take the screenshot
+            subprocess.run(["scrot", screenshot_path, "-d", "1"], env=env)
 
-        # Terminate the application
-        app_proc.terminate()
-        app_proc.wait(timeout=5)
+            # Terminate the application
+            app_proc.terminate()
+            app_proc.wait(timeout=5)
 
     finally:
         # Stop the virtual display

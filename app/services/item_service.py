@@ -5,12 +5,12 @@ class ItemService:
     def __init__(self):
         self.item_repository = ItemRepository()
 
-    def add_item(self, description, item_type, unit_id):
+    def add_item(self, description, item_type, unit_id, supplier_id=None):
         if not all([description, item_type, unit_id]):
             return {"success": False, "message": "Todos os campos são obrigatórios."}
 
         try:
-            new_id = self.item_repository.add(description, item_type, unit_id)
+            new_id = self.item_repository.add(description, item_type, unit_id, supplier_id)
             if new_id:
                 return {"success": True, "data": new_id, "message": "Item adicionado com sucesso."}
             else:
@@ -42,12 +42,12 @@ class ItemService:
         except Exception as e:
             return {"success": False, "message": f"Erro ao listar unidades: {e}"}
 
-    def update_item(self, item_id, description, item_type, unit_id):
+    def update_item(self, item_id, description, item_type, unit_id, supplier_id=None):
         if not all([item_id, description, item_type, unit_id]):
             return {"success": False, "message": "Todos os campos são obrigatórios."}
 
         try:
-            if self.item_repository.update(item_id, description, item_type, unit_id):
+            if self.item_repository.update(item_id, description, item_type, unit_id, supplier_id):
                 return {"success": True, "message": "Item atualizado com sucesso."}
             else:
                 return {"success": False, "message": "Item com esta descrição já existe."}
