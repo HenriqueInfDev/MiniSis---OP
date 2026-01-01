@@ -12,7 +12,7 @@ def create_entry(entry_date, supplier, note_number):
     cursor = conn.cursor()
     try:
         cursor.execute(
-            "INSERT INTO TENTRADANOTA (DATA_ENTRADA, FORNECEDOR, NUMERO_NOTA, STATUS) VALUES (?, ?, ?, 'Em Aberto')",
+            "INSERT INTO T_ENTRADA_NOTA (DATA_ENTRADA, FORNECEDOR, NUMERO_NOTA, STATUS) VALUES (?, ?, ?, 'Em Aberto')",
             (entry_date, supplier, note_number)
         )
         entry_id = cursor.lastrowid
@@ -28,7 +28,7 @@ def update_entry_master(entry_id, entry_date, supplier, note_number):
     conn = get_db_manager().get_connection()
     try:
         conn.execute(
-            "UPDATE TENTRADANOTA SET DATA_ENTRADA = ?, FORNECEDOR = ?, NUMERO_NOTA = ? WHERE ID = ?",
+            "UPDATE T_ENTRADA_NOTA SET DATA_ENTRADA = ?, FORNECEDOR = ?, NUMERO_NOTA = ? WHERE ID = ?",
             (entry_date, supplier, note_number, entry_id)
         )
         conn.commit()
@@ -48,11 +48,11 @@ def update_entry_items(entry_id, items):
     try:
         with conn:
             # Apaga os itens antigos
-            cursor.execute("DELETE FROM TENTRADANOTA_ITENS WHERE ID_ENTRADA = ?", (entry_id,))
+            cursor.execute("DELETE FROM T_ENTRADA_NOTA_ITENS WHERE ID_ENTRADA = ?", (entry_id,))
             # Insere os novos itens
             if items:
                 cursor.executemany(
-                    "INSERT INTO TENTRADANOTA_ITENS (ID_ENTRADA, ID_INSUMO, QUANTIDADE, VALOR_UNITARIO) VALUES (?, ?, ?, ?)",
+                    "INSERT INTO T_ENTRADA_NOTA_ITENS (ID_ENTRADA, ID_INSUMO, QUANTIDADE, VALOR_UNITARIO) VALUES (?, ?, ?, ?)",
                     [(entry_id, item['id_insumo'], item['quantidade'], item['valor_unitario']) for item in items]
                 )
         return True
@@ -63,7 +63,7 @@ def update_entry_items(entry_id, items):
 def get_entry_details(entry_id):
     """Busca os detalhes completos de uma nota de entrada (mestre e itens)."""
     conn = get_db_manager().get_connection()
-    master = conn.execute("SELECT * FROM TENTRADANOTA WHERE ID = ?", (entry_id,)).fetchone()
+    master = conn.execute("SELECT * FROM T_ENTRADA_NOTA WHERE ID = ?", (entry_id,)).fetchone()
     if not master:
         return None
 
@@ -75,9 +75,9 @@ def get_entry_details(entry_id):
             tu.SIGLA,
             tei.QUANTIDADE,
             tei.VALOR_UNITARIO
-        FROM TENTRADANOTA_ITENS tei
-        JOIN TITEM ti ON tei.ID_INSUMO = ti.ID
-        JOIN TUNIDADE tu ON ti.ID_UNIDADE = tu.ID
+        FROM T_ENTRADA_NOTA_ITENS tei
+        JOIN T_ITEM ti ON tei.ID_INSUMO = ti.ID
+        JOIN T_UNIDADE tu ON ti.ID_UNIDADE = tu.ID
         WHERE tei.ID_ENTRADA = ?
     """, (entry_id,)).fetchall()
 
@@ -86,7 +86,7 @@ def get_entry_details(entry_id):
 def list_entries(search_term="", search_field="id"):
     """Lista todas as notas de entrada, com filtro opcional."""
     conn = get_db_manager().get_connection()
-    query = "SELECT ID, DATA_ENTRADA, FORNECEDOR, NUMERO_NOTA, VALOR_TOTAL, STATUS FROM TENTRADANOTA"
+    query = "SELECT ID, DATA_ENTRADA, FORNECEDOR, NUMERO_NOTA, VALOR_TOTAL, STATUS FROM T_ENTRADA_NOTA"
     params = ()
 
     if search_term:
@@ -134,7 +134,7 @@ def finalize_entry(entry_id):
 
                 # 1. Obter o saldo e custo atuais do insumo
                 current_item = cursor.execute(
-                    "SELECT SALDO_ESTOQUE, CUSTO_MEDIO FROM TITEM WHERE ID = ?",
+                    "SELECT SALDO_ESTOQUE, CUSTO_MEDIO FROM T_ITEM WHERE ID = ?",
                     (insumo_id,)
                 ).fetchone()
 
@@ -145,15 +145,15 @@ def finalize_entry(entry_id):
                 new_balance = old_balance + quantity
                 new_avg_cost = ((old_balance * old_avg_cost) + (quantity * unit_cost)) / new_balance if new_balance > 0 else 0
 
-                # 3. Atualizar o saldo e custo médio na TITEM
+                # 3. Atualizar o saldo e custo médio na T_ITEM
                 cursor.execute(
-                    "UPDATE TITEM SET SALDO_ESTOQUE = ?, CUSTO_MEDIO = ? WHERE ID = ?",
+                    "UPDATE T_ITEM SET SALDO_ESTOQUE = ?, CUSTO_MEDIO = ? WHERE ID = ?",
                     (new_balance, new_avg_cost, insumo_id)
                 )
 
-                # 4. Registrar na TMOVIMENTO
+                # 4. Registrar na T_MOVIMENTO
                 cursor.execute(
-                    """INSERT INTO TMOVIMENTO
+                    """INSERT INTO T_MOVIMENTO
                        (ID_ITEM, TIPO_MOVIMENTO, QUANTIDADE, VALOR_UNITARIO, DATA_MOVIMENTO, ID_ORDEM_PRODUCAO)
                        VALUES (?, 'Entrada por Nota', ?, ?, ?, NULL)""",
                     (insumo_id, quantity, unit_cost, details['master']['DATA_ENTRADA'])
@@ -161,7 +161,7 @@ def finalize_entry(entry_id):
 
             # 5. Atualizar o valor total e o status da nota de entrada
             cursor.execute(
-                "UPDATE TENTRADANOTA SET VALOR_TOTAL = ?, STATUS = 'Finalizada' WHERE ID = ?",
+                "UPDATE T_ENTRADA_NOTA SET VALOR_TOTAL = ?, STATUS = 'Finalizada' WHERE ID = ?",
                 (total_value, entry_id)
             )
 

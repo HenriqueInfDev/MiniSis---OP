@@ -8,6 +8,7 @@ from app.database import get_db_manager
 from app.item.ui_search_window import SearchWindow
 from app.production.ui_op_window import OPWindow
 from app.stock.ui_entry_search_window import EntrySearchWindow
+from app.supplier.ui_search_window import SearchSupplierWindow
 
 class MainWindow(QMainWindow):
     def __init__(self):
@@ -15,8 +16,9 @@ class MainWindow(QMainWindow):
         self.search_window = None
         self.op_window = None
         self.entry_search_window = None
+        self.search_supplier_window = None
 
-        self.setWindowTitle("GP - MiniSis")
+        self.setWindowTitle("MiniSis Gestão de Produção")
         self.setWindowIcon(QIcon("app/assets/logo.png"))
         self.setGeometry(100, 100, 1024, 768)
 
@@ -33,6 +35,10 @@ class MainWindow(QMainWindow):
         products_action.triggered.connect(self.open_products_window)
         registers_menu.addAction(products_action)
 
+        suppliers_action = QAction("Fornecedores...", self)
+        suppliers_action.triggered.connect(self.open_supplier_window)
+        registers_menu.addAction(suppliers_action)
+
         # Menu Movimento
         movement_menu = menu_bar.addMenu("&Movimento")
         entry_action = QAction("Entrada de Insumos...", self)
@@ -47,7 +53,7 @@ class MainWindow(QMainWindow):
         settings_menu = menu_bar.addMenu("&Configurações")
 
     def setup_central_widget(self):
-        central_widget = QLabel("Bem-vindo ao MiniSis - Gestão de Produção")
+        central_widget = QLabel("Bem-vindo ao MiniSis Gestão de Produção")
         central_widget.setAlignment(Qt.AlignCenter)
         self.setCentralWidget(central_widget)
 
@@ -89,6 +95,19 @@ class MainWindow(QMainWindow):
 
         self.entry_search_window = EntrySearchWindow()
         self.entry_search_window.show()
+
+    def open_supplier_window(self):
+        """Abre a janela de pesquisa de fornecedores, garantindo que apenas uma instância exista."""
+        try:
+            if self.search_supplier_window and self.search_supplier_window.isVisible():
+                self.search_supplier_window.activateWindow()
+                self.search_supplier_window.raise_()
+                return
+        except RuntimeError:
+            pass
+
+        self.search_supplier_window = SearchSupplierWindow()
+        self.search_supplier_window.show()
 
 def main():
     """Função principal que inicia a aplicação."""
