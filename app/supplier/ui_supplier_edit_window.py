@@ -6,8 +6,8 @@ from PySide6.QtWidgets import (
 )
 from PySide6.QtGui import QRegularExpressionValidator
 from PySide6.QtCore import QRegularExpression, Qt
-from ..services.supplier_service import SupplierService
-from ..ui_utils import show_error_message
+from app.services.supplier_service import SupplierService
+from app.ui_utils import show_error_message
 
 class SupplierEditWindow(QWidget):
     def __init__(self, supplier_id=None, parent=None):

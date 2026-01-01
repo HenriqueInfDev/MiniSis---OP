@@ -5,9 +5,9 @@ from PySide6.QtWidgets import (
 )
 from PySide6.QtGui import QStandardItemModel, QStandardItem
 from PySide6.QtCore import Signal, Qt
-from ..services.supplier_service import SupplierService
-from ..ui_utils import show_error_message
-from .ui_supplier_edit_window import SupplierEditWindow
+from app.services.supplier_service import SupplierService
+from app.ui_utils import show_error_message
+from app.supplier.ui_supplier_edit_window import SupplierEditWindow
 
 def _safe_str(value):
     """Converte o valor para string, tratando None como uma string vazia."""
@@ -116,7 +116,7 @@ class SupplierSearchWindow(QWidget):
 
     def show_edit_window(self, supplier_id):
         edit_window = SupplierEditWindow(supplier_id=supplier_id, parent=self)
-        edit_window.finished.connect(self.load_suppliers)
+        edit_window.destroyed.connect(self.load_suppliers)
         edit_window.show()
 
     def search_suppliers(self, search_field, search_text):

@@ -5,9 +5,9 @@ from PySide6.QtWidgets import (
     QTableWidget, QTableWidgetItem, QLabel, QDoubleSpinBox, QAbstractItemView
 )
 from PySide6.QtCore import Qt
-from ..services.item_service import ItemService
-from ..production import composition_operations # To be refactored later
-from ..ui_utils import NumericTableWidgetItem, show_error_message
+from app.services.item_service import ItemService
+from app.production import composition_operations # To be refactored later
+from app.ui_utils import NumericTableWidgetItem, show_error_message
 
 class EditWindow(QWidget):
     def __init__(self, item_id=None, parent=None):
@@ -247,7 +247,7 @@ class EditWindow(QWidget):
 
     def open_material_search(self):
         """Abre a janela de busca de itens em modo de seleção."""
-        from .ui_search_window import SearchWindow
+        from app.item.ui_search_window import SearchWindow
         if self.search_window is None:
             self.search_window = SearchWindow(selection_mode=True, item_type_filter=['Insumo', 'Ambos'])
             self.search_window.item_selected.connect(self.set_selected_material)
