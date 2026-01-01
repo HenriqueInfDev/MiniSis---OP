@@ -11,8 +11,8 @@ from .ui_op_search_window import OPSearchWindow
 from ..ui_utils import NumericTableWidgetItem
 
 class OPWindow(QWidget):
-    def __init__(self, op_id=None):
-        super().__init__()
+    def __init__(self, op_id=None, parent=None):
+        super().__init__(parent)
         self.current_op_id = op_id
         self.search_item_window = None
         self.search_op_window = None
@@ -60,6 +60,7 @@ class OPWindow(QWidget):
         self.items_table.verticalHeader().setVisible(False)
         self.items_table.setSelectionBehavior(QAbstractItemView.SelectRows)
         self.items_table.setColumnHidden(0, True)
+        self.items_table.setStyleSheet("QTableView::item:selected { background-color: #D3D3D3; color: black; }")
         header = self.items_table.horizontalHeader()
         header.setSectionResizeMode(QHeaderView.ResizeToContents)
         header.setSectionResizeMode(1, QHeaderView.Stretch)
@@ -122,14 +123,14 @@ class OPWindow(QWidget):
                 self.add_item_to_table(item)
 
     def open_item_search(self):
-        try:
-            if self.search_item_window and self.search_item_window.isVisible():
-                self.search_item_window.activateWindow()
-                return
-        except RuntimeError: pass
-        self.search_item_window = SearchWindow(selection_mode=True, item_type_filter=['Produto', 'Ambos'])
-        self.search_item_window.item_selected.connect(self.add_item_from_search)
-        self.search_item_window.show()
+        if self.search_item_window is None:
+            self.search_item_window = SearchWindow(selection_mode=True, item_type_filter=['Produto', 'Ambos'])
+            self.search_item_window.item_selected.connect(self.add_item_from_search)
+            self.search_item_window.destroyed.connect(lambda: setattr(self, 'search_item_window', None))
+            self.search_item_window.show()
+        else:
+            self.search_item_window.activateWindow()
+            self.search_item_window.raise_()
 
     def add_item_from_search(self, item_data):
         for row in range(self.items_table.rowCount()):
@@ -148,7 +149,7 @@ class OPWindow(QWidget):
         id_item = NumericTableWidgetItem(str(item['ID_PRODUTO']))
         desc_item = QTableWidgetItem(item['DESCRICAO'])
         qty_item = NumericTableWidgetItem(str(item['QUANTIDADE_PRODUZIR']))
-        unit_item = QTableWidgetItem(item['UNIDADE'])
+        unit_item = QTableWidgetItem(item['UNIDADE'].upper())
 
         # Apenas a célula de quantidade deve ser editável
         id_item.setFlags(id_item.flags() & ~Qt.ItemIsEditable)
@@ -169,14 +170,14 @@ class OPWindow(QWidget):
             self.items_table.removeRow(index)
 
     def open_op_search(self):
-        try:
-            if self.search_op_window and self.search_op_window.isVisible():
-                self.search_op_window.activateWindow()
-                return
-        except RuntimeError: pass
-        self.search_op_window = OPSearchWindow()
-        self.search_op_window.op_selected.connect(self.load_op_by_id)
-        self.search_op_window.show()
+        if self.search_op_window is None:
+            self.search_op_window = OPSearchWindow()
+            self.search_op_window.op_selected.connect(self.load_op_by_id)
+            self.search_op_window.destroyed.connect(lambda: setattr(self, 'search_op_window', None))
+            self.search_op_window.show()
+        else:
+            self.search_op_window.activateWindow()
+            self.search_op_window.raise_()
 
     def load_op_by_id(self, op_id):
         self.current_op_id = op_id

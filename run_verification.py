@@ -18,9 +18,10 @@ def run_verification():
     xvfb_proc = subprocess.Popen(xvfb_cmd.split())
 
     try:
-        # Set the DISPLAY environment variable for the application
+        # Set environment variables for the application
         env = os.environ.copy()
         env["DISPLAY"] = display
+        env["MINISIS_ENV"] = "test"
 
         # Launch the application
         app_proc = subprocess.Popen(["python", "main.py"], env=env)

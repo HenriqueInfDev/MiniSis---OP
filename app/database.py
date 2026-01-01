@@ -19,17 +19,30 @@ class DatabaseManager:
             self.initialized = True
 
     def _get_db_path(self):
-        install_path = os.getenv('MINISIS_INSTALL_PATH', os.path.expanduser('~'))
-        return os.path.join(install_path, 'MiniSis', 'OP', 'dados', 'OPMiniSis.db')
+        if os.environ.get("MINISIS_ENV") == "test":
+            return ":memory:"
+
+        home_dir = os.path.expanduser("~")
+        return os.path.join(home_dir, "MiniSis", "Ordem de Producao", "Dados", "DADOS.DB")
 
     def initialize_database(self):
-        db_dir = os.path.dirname(self.db_path)
-        if db_dir:
-            os.makedirs(db_dir, exist_ok=True)
-        self.connection = sqlite3.connect(self.db_path)
+        is_memory_db = self.db_path == ":memory:"
+        if not is_memory_db:
+            db_dir = os.path.dirname(self.db_path)
+            if db_dir:
+                os.makedirs(db_dir, exist_ok=True)
+
+        self.connection = sqlite3.connect(self.db_path, check_same_thread=False if is_memory_db else True)
         self.connection.row_factory = sqlite3.Row
-        self._create_tables()
+
+        cursor = self.connection.cursor()
+        self._create_tables(cursor)
+        self._run_migrations(cursor)
+        self._seed_initial_data(cursor)
+        self.connection.commit()
+
         print(f"Banco de dados inicializado em: {self.db_path}")
+
 
     def get_connection(self):
         if self.connection is None:
@@ -42,64 +55,86 @@ class DatabaseManager:
             self.connection = None
             print("Conexão com o banco de dados fechada.")
 
-    def _create_tables(self):
-        cursor = self.connection.cursor()
-        # Tabela de Unidades
+    def _create_tables(self, cursor):
         cursor.execute('''
-        CREATE TABLE IF NOT EXISTS TUNIDADE (
+        CREATE TABLE IF NOT EXISTS UNIDADE (
             ID INTEGER PRIMARY KEY AUTOINCREMENT,
             NOME TEXT NOT NULL UNIQUE,
             SIGLA TEXT NOT NULL UNIQUE
         )
         ''')
-        # Tabela de Itens (Produtos e Insumos)
         cursor.execute('''
-        CREATE TABLE IF NOT EXISTS TITEM (
+        CREATE TABLE IF NOT EXISTS ITEM (
             ID INTEGER PRIMARY KEY AUTOINCREMENT,
             DESCRICAO TEXT NOT NULL UNIQUE,
             TIPO_ITEM TEXT NOT NULL CHECK(TIPO_ITEM IN ('Insumo', 'Produto', 'Ambos')),
             ID_UNIDADE INTEGER NOT NULL,
             SALDO_ESTOQUE REAL NOT NULL DEFAULT 0,
             CUSTO_MEDIO REAL NOT NULL DEFAULT 0,
-            FOREIGN KEY (ID_UNIDADE) REFERENCES TUNIDADE (ID)
+            FOREIGN KEY (ID_UNIDADE) REFERENCES UNIDADE (ID)
         )
         ''')
-        # Tabela de Composição (Ficha Técnica)
         cursor.execute('''
-        CREATE TABLE IF NOT EXISTS TCOMPOSICAO (
+        CREATE TABLE IF NOT EXISTS FORNECEDOR (
+            ID INTEGER PRIMARY KEY AUTOINCREMENT,
+            RAZAO_SOCIAL TEXT NOT NULL UNIQUE,
+            NOME_FANTASIA TEXT,
+            CNPJ TEXT,
+            TELEFONE TEXT,
+            EMAIL TEXT,
+            LOGRADOURO TEXT,
+            NUMERO TEXT,
+            COMPLEMENTO TEXT,
+            BAIRRO TEXT,
+            CIDADE TEXT,
+            UF TEXT,
+            CEP TEXT
+        )
+        ''')
+        cursor.execute('''
+        CREATE TABLE IF NOT EXISTS ENTRADANOTA (
+            ID INTEGER PRIMARY KEY AUTOINCREMENT,
+            ID_FORNECEDOR INTEGER,
+            DATA_ENTRADA TEXT NOT NULL,
+            DATA_DIGITACAO TEXT,
+            NUMERO_NOTA TEXT,
+            VALOR_TOTAL REAL,
+            STATUS TEXT NOT NULL CHECK(STATUS IN ('Em Aberto', 'Finalizada')),
+            FOREIGN KEY (ID_FORNECEDOR) REFERENCES FORNECEDOR (ID)
+        )
+        ''')
+        cursor.execute('''
+        CREATE TABLE IF NOT EXISTS COMPOSICAO (
             ID INTEGER PRIMARY KEY AUTOINCREMENT,
             ID_PRODUTO INTEGER NOT NULL,
             ID_INSUMO INTEGER NOT NULL,
             QUANTIDADE REAL NOT NULL,
-            FOREIGN KEY (ID_PRODUTO) REFERENCES TITEM (ID),
-            FOREIGN KEY (ID_INSUMO) REFERENCES TITEM (ID),
+            FOREIGN KEY (ID_PRODUTO) REFERENCES ITEM (ID),
+            FOREIGN KEY (ID_INSUMO) REFERENCES ITEM (ID),
             UNIQUE (ID_PRODUTO, ID_INSUMO)
         )
         ''')
-        # Tabela de Ordem de Produção (Mestre)
         cursor.execute('''
-        CREATE TABLE IF NOT EXISTS TORDEMPRODUCAO (
+        CREATE TABLE IF NOT EXISTS ORDEMPRODUCAO (
             ID INTEGER PRIMARY KEY AUTOINCREMENT,
             DATA_CRIACAO TEXT NOT NULL,
             DATA_PREVISTA TEXT,
             STATUS TEXT NOT NULL CHECK(STATUS IN ('Planejada', 'Em Andamento', 'Concluída', 'Cancelada'))
         )
         ''')
-        # Tabela de Itens da Ordem de Produção (Detalhe)
         cursor.execute('''
-        CREATE TABLE IF NOT EXISTS TORDEMPRODUCAO_ITENS (
+        CREATE TABLE IF NOT EXISTS ORDEMPRODUCAO_ITENS (
             ID INTEGER PRIMARY KEY AUTOINCREMENT,
             ID_ORDEM_PRODUCAO INTEGER NOT NULL,
             ID_PRODUTO INTEGER NOT NULL,
             QUANTIDADE_PRODUZIR REAL NOT NULL,
-            FOREIGN KEY (ID_ORDEM_PRODUCAO) REFERENCES TORDEMPRODUCAO (ID),
-            FOREIGN KEY (ID_PRODUTO) REFERENCES TITEM (ID),
+            FOREIGN KEY (ID_ORDEM_PRODUCAO) REFERENCES ORDEMPRODUCAO (ID),
+            FOREIGN KEY (ID_PRODUTO) REFERENCES ITEM (ID),
             UNIQUE (ID_ORDEM_PRODUCAO, ID_PRODUTO)
         )
         ''')
-        # Tabela de Movimentação de Estoque
         cursor.execute('''
-        CREATE TABLE IF NOT EXISTS TMOVIMENTO (
+        CREATE TABLE IF NOT EXISTS MOVIMENTO (
             ID INTEGER PRIMARY KEY AUTOINCREMENT,
             ID_ITEM INTEGER NOT NULL,
             TIPO_MOVIMENTO TEXT NOT NULL,
@@ -107,43 +142,60 @@ class DatabaseManager:
             VALOR_UNITARIO REAL,
             ID_ORDEM_PRODUCAO INTEGER,
             DATA_MOVIMENTO TEXT NOT NULL,
-            FOREIGN KEY (ID_ITEM) REFERENCES TITEM (ID),
-            FOREIGN KEY (ID_ORDEM_PRODUCAO) REFERENCES TORDEMPRODUCAO (ID)
+            FOREIGN KEY (ID_ITEM) REFERENCES ITEM (ID),
+            FOREIGN KEY (ID_ORDEM_PRODUCAO) REFERENCES ORDEMPRODUCAO (ID)
         )
         ''')
-        # Tabela de Nota de Entrada (Mestre)
         cursor.execute('''
-        CREATE TABLE IF NOT EXISTS TENTRADANOTA (
-            ID INTEGER PRIMARY KEY AUTOINCREMENT,
-            DATA_ENTRADA TEXT NOT NULL,
-            FORNECEDOR TEXT,
-            NUMERO_NOTA TEXT,
-            VALOR_TOTAL REAL,
-            STATUS TEXT NOT NULL CHECK(STATUS IN ('Em Aberto', 'Finalizada'))
-        )
-        ''')
-        # Tabela de Itens da Nota de Entrada (Detalhe)
-        cursor.execute('''
-        CREATE TABLE IF NOT EXISTS TENTRADANOTA_ITENS (
+        CREATE TABLE IF NOT EXISTS ENTRADANOTA_ITENS (
             ID INTEGER PRIMARY KEY AUTOINCREMENT,
             ID_ENTRADA INTEGER NOT NULL,
             ID_INSUMO INTEGER NOT NULL,
             QUANTIDADE REAL NOT NULL,
             VALOR_UNITARIO REAL NOT NULL,
-            FOREIGN KEY (ID_ENTRADA) REFERENCES TENTRADANOTA (ID),
-            FOREIGN KEY (ID_INSUMO) REFERENCES TITEM (ID),
+            FOREIGN KEY (ID_ENTRADA) REFERENCES ENTRADANOTA (ID),
+            FOREIGN KEY (ID_INSUMO) REFERENCES ITEM (ID),
             UNIQUE (ID_ENTRADA, ID_INSUMO)
         )
         ''')
 
-        # Inserção de unidades padrão (com nomes de coluna em maiúsculas)
+    def _run_migrations(self, cursor):
+        table_rename_map = {
+            "TUNIDADE": "UNIDADE", "TITEM": "ITEM", "TFORNECEDOR": "FORNECEDOR",
+            "TENTRADANOTA": "ENTRADANOTA", "TCOMPOSICAO": "COMPOSICAO",
+            "TORDEMPRODUCAO": "ORDEMPRODUCAO", "TORDEMPRODUCAO_ITENS": "ORDEMPRODUCAO_ITENS",
+            "TMOVIMENTO": "MOVIMENTO", "TENTRADANOTA_ITENS": "ENTRADANOTA_ITENS"
+        }
+        cursor.execute("SELECT name FROM sqlite_master WHERE type='table'")
+        tables = [row[0] for row in cursor.fetchall()]
+        for old_name, new_name in table_rename_map.items():
+            if old_name in tables and new_name not in tables:
+                cursor.execute(f"ALTER TABLE {old_name} RENAME TO {new_name}")
+
+        cursor.execute("PRAGMA table_info(ENTRADANOTA)")
+        columns_info = {column[1]: {'type': column[2], 'pk': column[5]} for column in cursor.fetchall()}
+
+        if 'DATA_DIGITACAO' not in columns_info:
+            cursor.execute('ALTER TABLE ENTRADANOTA ADD COLUMN DATA_DIGITACAO TEXT')
+            cursor.execute('UPDATE ENTRADANOTA SET DATA_DIGITACAO = DATA_ENTRADA WHERE DATA_DIGITACAO IS NULL')
+
+        cursor.execute("PRAGMA table_info(FORNECEDOR)")
+        supplier_columns = {col[1]: col for col in cursor.fetchall()}
+
+        if 'NOME' in supplier_columns and 'RAZAO_SOCIAL' not in supplier_columns:
+            cursor.execute('ALTER TABLE FORNECEDOR RENAME COLUMN NOME TO RAZAO_SOCIAL')
+
+        address_columns = ['LOGRADOURO', 'NUMERO', 'COMPLEMENTO', 'BAIRRO', 'CIDADE', 'UF', 'CEP']
+        for col in address_columns:
+            if col not in supplier_columns:
+                cursor.execute(f'ALTER TABLE FORNECEDOR ADD COLUMN {col} TEXT')
+
+    def _seed_initial_data(self, cursor):
         unidades = [('Grama', 'g'), ('Quilograma', 'kg'), ('Mililitro', 'ml'), ('Litro', 'L'), ('Unidade', 'un')]
         for nome, sigla in unidades:
-            cursor.execute("SELECT ID FROM TUNIDADE WHERE NOME = ?", (nome,))
+            cursor.execute("SELECT ID FROM UNIDADE WHERE NOME = ?", (nome,))
             if cursor.fetchone() is None:
-                cursor.execute("INSERT INTO TUNIDADE (NOME, SIGLA) VALUES (?, ?)", (nome, sigla))
-
-        self.connection.commit()
+                cursor.execute("INSERT INTO UNIDADE (NOME, SIGLA) VALUES (?, ?)", (nome, sigla))
 
 def get_db_manager():
     return DatabaseManager()
