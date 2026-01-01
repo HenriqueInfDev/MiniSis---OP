@@ -1,13 +1,2 @@
-# Ignore SQLite database files
-*.db
-*.db-journal
-
-# Ignore Python cache files
-__pycache__/
-
-# Ignore log files
-*.log
-
-# Ignore IDE/editor-specific files
-.vscode/
-.idea/
+Gestão de Produção/Dados/DADOS.DB
+app.log
