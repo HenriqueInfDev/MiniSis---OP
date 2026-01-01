@@ -1,20 +1,20 @@
-# app/services/item_service.py
-from ..item.item_repository import ItemRepository
+# app/item/service.py
+from app.item.item_repository import ItemRepository
 
 class ItemService:
     def __init__(self):
         self.item_repository = ItemRepository()
 
-    def add_item(self, description, item_type, unit_id):
+    def add_item(self, codigo_interno, description, item_type, unit_id, id_fornecedor_padrao):
         if not all([description, item_type, unit_id]):
-            return {"success": False, "message": "Todos os campos são obrigatórios."}
+            return {"success": False, "message": "Descrição, Tipo e Unidade são obrigatórios."}
 
         try:
-            new_id = self.item_repository.add(description, item_type, unit_id)
+            new_id = self.item_repository.add(codigo_interno, description, item_type, unit_id, id_fornecedor_padrao)
             if new_id:
                 return {"success": True, "data": new_id, "message": "Item adicionado com sucesso."}
             else:
-                return {"success": False, "message": "Item com esta descrição já existe."}
+                return {"success": False, "message": "Item com este código interno ou descrição já existe."}
         except Exception as e:
             return {"success": False, "message": f"Erro ao adicionar item: {e}"}
 
@@ -42,15 +42,15 @@ class ItemService:
         except Exception as e:
             return {"success": False, "message": f"Erro ao listar unidades: {e}"}
 
-    def update_item(self, item_id, description, item_type, unit_id):
+    def update_item(self, item_id, codigo_interno, description, item_type, unit_id, id_fornecedor_padrao):
         if not all([item_id, description, item_type, unit_id]):
-            return {"success": False, "message": "Todos os campos são obrigatórios."}
+            return {"success": False, "message": "Descrição, Tipo e Unidade são obrigatórios."}
 
         try:
-            if self.item_repository.update(item_id, description, item_type, unit_id):
+            if self.item_repository.update(item_id, codigo_interno, description, item_type, unit_id, id_fornecedor_padrao):
                 return {"success": True, "message": "Item atualizado com sucesso."}
             else:
-                return {"success": False, "message": "Item com esta descrição já existe."}
+                return {"success": False, "message": "Item com este código interno ou descrição já existe."}
         except Exception as e:
             return {"success": False, "message": f"Erro ao atualizar item: {e}"}
 

@@ -1,16 +1,15 @@
-# app/ui_edit_window.py
+# app/item/ui_form_window.py
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QGroupBox, QFormLayout, QLineEdit,
     QComboBox, QPushButton, QMessageBox, QHeaderView, QTabWidget,
     QTableWidget, QTableWidgetItem, QLabel, QDoubleSpinBox, QAbstractItemView
 )
 from PySide6.QtCore import Qt
-from ..services.item_service import ItemService
-from ..production import composition_operations # To be refactored later
-from .ui_search_window import SearchWindow
-from ..ui_utils import NumericTableWidgetItem, show_error_message
+from app.item.service import ItemService
+from app.production import composition_operations
+from app.utils.ui_utils import NumericTableWidgetItem, show_error_message
 
-class EditWindow(QWidget):
+class ItemFormWindow(QWidget):
     def __init__(self, item_id=None):
         super().__init__()
         self.item_service = ItemService()
@@ -38,6 +37,7 @@ class EditWindow(QWidget):
 
         # Carregar dados
         self.populate_units_combobox()
+        self.populate_suppliers_combobox()
         self.load_item_data()
 
         # Conectar sinal da ComboBox de tipo
@@ -109,14 +109,18 @@ class EditWindow(QWidget):
         main_widget = QWidget()
         layout = QFormLayout(main_widget)
 
+        self.codigo_interno_input = QLineEdit()
         self.description_input = QLineEdit()
         self.type_combo = QComboBox()
         self.type_combo.addItems(["Insumo", "Produto", "Ambos"])
         self.unit_combo = QComboBox()
+        self.supplier_combo = QComboBox()
 
+        layout.addRow("Código Interno:", self.codigo_interno_input)
         layout.addRow("Descrição:", self.description_input)
         layout.addRow("Tipo de Item:", self.type_combo)
         layout.addRow("Unidade:", self.unit_combo)
+        layout.addRow("Fornecedor Padrão:", self.supplier_combo)
 
         self.tab_widget.addTab(main_widget, "Principal")
 
@@ -204,24 +208,38 @@ class EditWindow(QWidget):
             for unit in response["data"]:
                 self.unit_combo.addItem(f"{unit['NOME']} ({unit['SIGLA']})", userData=unit['ID'])
         else:
-            show_error_message(self, response["message"])
+            show_error_message(self, "Error", response["message"])
+
+    def populate_suppliers_combobox(self):
+        from app.supplier.service import SupplierService
+        supplier_service = SupplierService()
+        response = supplier_service.get_all_suppliers()
+        if response["success"]:
+            self.supplier_combo.addItem("Nenhum", userData=None)
+            for supplier in response["data"]:
+                self.supplier_combo.addItem(supplier['NOME_FANTASIA'] or supplier['RAZAO_SOCIAL'], userData=supplier['ID'])
+        else:
+            show_error_message(self, "Error", response["message"])
 
     def load_item_data(self):
         if self.current_item_id:
             response = self.item_service.get_item_by_id(self.current_item_id)
             if response["success"]:
                 item = response["data"]
+                self.codigo_interno_input.setText(item['CODIGO_INTERNO'])
                 self.description_input.setText(item['DESCRICAO'])
                 self.type_combo.setCurrentText(item['TIPO_ITEM'])
 
-                # Encontra o index da unidade no ComboBox
                 unit_index = self.unit_combo.findData(item['ID_UNIDADE'])
                 if unit_index != -1:
                     self.unit_combo.setCurrentIndex(unit_index)
 
+                supplier_index = self.supplier_combo.findData(item['ID_FORNECEDOR_PADRAO'])
+                if supplier_index != -1:
+                    self.supplier_combo.setCurrentIndex(supplier_index)
+
                 self.load_composition_data()
 
-        # Atualiza a visibilidade da aba com base no tipo carregado
         self.toggle_composition_tab()
 
     def load_composition_data(self):
@@ -246,17 +264,15 @@ class EditWindow(QWidget):
 
     def open_material_search(self):
         """Abre a janela de busca de itens em modo de seleção."""
-        try:
-            if self.search_window and self.search_window.isVisible():
-                self.search_window.activateWindow()
-                self.search_window.raise_()
-                return
-        except RuntimeError:
-            pass # A janela foi fechada
-
-        self.search_window = SearchWindow(selection_mode=True, item_type_filter=['Insumo', 'Ambos'])
-        self.search_window.item_selected.connect(self.set_selected_material)
-        self.search_window.show()
+        from .ui_search_window import SearchWindow
+        if self.search_window is None:
+            self.search_window = SearchWindow(selection_mode=True, item_type_filter=['Insumo', 'Ambos'])
+            self.search_window.item_selected.connect(self.set_selected_material)
+            self.search_window.destroyed.connect(lambda: setattr(self, 'search_window', None))
+            self.search_window.show()
+        else:
+            self.search_window.activateWindow()
+            self.search_window.raise_()
 
     def set_selected_material(self, item_data):
         """Recebe o item selecionado da janela de busca e preenche o formulário."""
@@ -382,9 +398,11 @@ class EditWindow(QWidget):
     def new_item(self):
         self.current_item_id = None
         self.setWindowTitle("Novo Item")
+        self.codigo_interno_input.clear()
         self.description_input.clear()
         self.type_combo.setCurrentIndex(0)
         self.unit_combo.setCurrentIndex(0)
+        self.supplier_combo.setCurrentIndex(0)
         self.composition_table.setRowCount(0)
         self.update_total_cost()
         self.toggle_composition_tab()
@@ -398,9 +416,11 @@ class EditWindow(QWidget):
 
     def save_item(self):
         # Coleta dados da aba Principal
+        codigo_interno = self.codigo_interno_input.text()
         description = self.description_input.text()
         item_type = self.type_combo.currentText()
         unit_id = self.unit_combo.currentData()
+        supplier_id = self.supplier_combo.currentData()
 
         if not description or unit_id is None:
             QMessageBox.warning(self, "Atenção", "Descrição e Unidade são obrigatórios.")
@@ -408,16 +428,16 @@ class EditWindow(QWidget):
 
         # Salva o item principal
         if self.current_item_id is None:  # Novo item
-            response = self.item_service.add_item(description, item_type, unit_id)
+            response = self.item_service.add_item(codigo_interno, description, item_type, unit_id, supplier_id)
             if response["success"]:
                 self.current_item_id = response["data"]
             else:
-                show_error_message(self, response["message"])
+                show_error_message(self, "Error", response["message"])
                 return
         else:  # Item existente
-            response = self.item_service.update_item(self.current_item_id, description, item_type, unit_id)
+            response = self.item_service.update_item(self.current_item_id, codigo_interno, description, item_type, unit_id, supplier_id)
             if not response["success"]:
-                show_error_message(self, response["message"])
+                show_error_message(self, "Error", response["message"])
                 return
 
         # Salva a composição se a aba estiver visível
@@ -455,4 +475,4 @@ class EditWindow(QWidget):
                 self.has_unsaved_changes = False # Para evitar o prompt de salvar ao fechar
                 self.close()
             else:
-                show_error_message(self, response["message"])
+                show_error_message(self, "Error", response["message"])
