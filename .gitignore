@@ -1,5 +1,6 @@
 # Ignore SQLite database files
 *.db
+*.DB
 *.db-journal
 
 # Ignore Python cache files

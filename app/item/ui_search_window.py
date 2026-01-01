@@ -1,16 +1,16 @@
-# app/ui_search_window.py
+# app/item/ui_search_window.py
 from PySide6.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QGroupBox, QFormLayout, QLineEdit,
+    QWidget, QVBoxLayout, QHBoxLayout, QGroupBox, QLineEdit,
     QComboBox, QPushButton, QTableView, QHeaderView, QAbstractItemView
 )
-from PySide6.QtCore import Signal
+from PySide6.QtCore import Signal, Qt
 from PySide6.QtGui import QStandardItemModel, QStandardItem
 
-from ..services.item_service import ItemService
-from ..ui_utils import show_error_message
+from app.item.service import ItemService
+from app.utils.ui_utils import show_error_message
 
 
-class SearchWindow(QWidget):
+class ItemSearchWindow(QWidget):
     # Sinal que emitirá os dados do item selecionado
     item_selected = Signal(dict)
 
@@ -24,6 +24,7 @@ class SearchWindow(QWidget):
         title = "Selecionar Insumo" if selection_mode else "Pesquisa de Produto"
         self.setWindowTitle(title)
         self.setGeometry(150, 150, 800, 600)
+        self.setAttribute(Qt.WA_DeleteOnClose)
 
         # Layout Principal
         self.main_layout = QVBoxLayout(self)
@@ -67,7 +68,7 @@ class SearchWindow(QWidget):
 
         self.table_view = QTableView()
         self.table_model = QStandardItemModel()
-        self.table_model.setHorizontalHeaderLabels(["ID", "Descrição", "Tipo", "Un.", "Quantidade", "Custo Unit."])
+        self.table_model.setHorizontalHeaderLabels(["ID", "Código Interno", "Descrição", "Tipo", "Un.", "Quantidade", "Custo Unit."])
         self.table_view.setModel(self.table_model)
         header = self.table_view.horizontalHeader()
         header.setSectionResizeMode(QHeaderView.ResizeToContents)
@@ -91,18 +92,16 @@ class SearchWindow(QWidget):
 
         if search_content:
             search_type_map = {
-                "Descrição": "Descrição",
-                "ID": "ID",
-                "Unidade": "Unidade",
-                "Quantidade": "Quantidade"
+                "Descrição": "description",
+                "ID": "id"
             }
-            search_type = search_type_map.get(search_type_text, "Descrição")
+            search_type = search_type_map.get(search_type_text, "description")
             response = self.item_service.search_items(search_type, search_content)
         else:
             response = self.item_service.get_all_items()
 
         if not response["success"]:
-            show_error_message(self, response["message"])
+            show_error_message(self, "Error", response["message"])
             return
 
         # Aplica o filtro de tipo de item, se existir
@@ -122,6 +121,7 @@ class SearchWindow(QWidget):
 
             row = [
                 id_item,
+                QStandardItem(item['CODIGO_INTERNO']),
                 QStandardItem(item['DESCRICAO']),
                 QStandardItem(item['TIPO_ITEM']),
                 QStandardItem(item['SIGLA'].upper()),
@@ -161,20 +161,14 @@ class SearchWindow(QWidget):
 
     def show_edit_window(self, item_id):
         """Abre a janela de edição, garantindo que apenas uma instância exista e limpando a referência quando fechada."""
-        # Se a janela já existe e está visível, apenas a traga para a frente.
-        if self.edit_window and self.edit_window.isVisible():
+        from .ui_form_window import ItemFormWindow
+        if self.edit_window is None:
+            self.edit_window = ItemFormWindow(item_id=item_id)
+            self.edit_window.destroyed.connect(self.on_edit_window_closed)
+            self.edit_window.show()
+        else:
             self.edit_window.activateWindow()
             self.edit_window.raise_()
-            return
-
-        from .ui_edit_window import EditWindow
-        self.edit_window = EditWindow(item_id=item_id)
-
-        # Conecta o sinal 'destroyed' para limpar a referência da janela quando ela for fechada.
-        # Isso previne o crash ao tentar reabrir a janela.
-        self.edit_window.destroyed.connect(self.on_edit_window_closed)
-
-        self.edit_window.show()
 
     def on_edit_window_closed(self):
         """Slot para limpar a referência da janela de edição e recarregar os itens."""

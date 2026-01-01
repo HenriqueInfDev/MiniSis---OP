@@ -11,7 +11,7 @@ def validate_bom_item(product_id, material_id):
         return False, "Um produto não pode ser componente de si mesmo."
 
     conn = get_db_manager().get_connection()
-    material = conn.execute('SELECT DESCRICAO, TIPO_ITEM FROM TITEM WHERE ID = ?', (material_id,)).fetchone()
+    material = conn.execute('SELECT DESCRICAO, TIPO_ITEM FROM ITEM WHERE ID = ?', (material_id,)).fetchone()
 
     if not material or material['TIPO_ITEM'] not in ('Insumo', 'Ambos'):
         return False, f"O item '{material['DESCRICAO'] if material else ''}' é um 'Produto' e não pode ser usado como insumo."
@@ -29,9 +29,9 @@ def get_bom(product_id):
             C.QUANTIDADE,
             U.SIGLA,
             I.CUSTO_MEDIO
-        FROM TCOMPOSICAO C
-        JOIN TITEM I ON C.ID_INSUMO = I.ID
-        JOIN TUNIDADE U ON I.ID_UNIDADE = U.ID
+        FROM COMPOSICAO C
+        JOIN ITEM I ON C.ID_INSUMO = I.ID
+        JOIN UNIDADE U ON I.ID_UNIDADE = U.ID
         WHERE C.ID_PRODUTO = ?
     ''', (product_id,)).fetchall()
     return bom
@@ -41,7 +41,7 @@ def add_bom_item(product_id, material_id, quantity):
     try:
         conn = get_db_manager().get_connection()
         conn.execute(
-            'INSERT INTO TCOMPOSICAO (ID_PRODUTO, ID_INSUMO, QUANTIDADE) VALUES (?, ?, ?)',
+            'INSERT INTO COMPOSICAO (ID_PRODUTO, ID_INSUMO, QUANTIDADE) VALUES (?, ?, ?)',
             (product_id, material_id, quantity)
         )
         conn.commit()
@@ -54,7 +54,7 @@ def update_bom_item(bom_id, quantity):
     """Atualiza a quantidade de um item na Composição (BOM)."""
     conn = get_db_manager().get_connection()
     conn.execute(
-        'UPDATE TCOMPOSICAO SET QUANTIDADE = ? WHERE ID = ?',
+        'UPDATE COMPOSICAO SET QUANTIDADE = ? WHERE ID = ?',
         (quantity, bom_id)
     )
     conn.commit()
@@ -62,7 +62,7 @@ def update_bom_item(bom_id, quantity):
 def delete_bom_item(bom_id):
     """Exclui um item da Composição (BOM)."""
     conn = get_db_manager().get_connection()
-    conn.execute('DELETE FROM TCOMPOSICAO WHERE ID = ?', (bom_id,))
+    conn.execute('DELETE FROM COMPOSICAO WHERE ID = ?', (bom_id,))
     conn.commit()
 
 def update_composition(product_id, new_composition):
@@ -74,10 +74,10 @@ def update_composition(product_id, new_composition):
     cursor = conn.cursor()
     try:
         with conn:
-            cursor.execute("DELETE FROM TCOMPOSICAO WHERE ID_PRODUTO = ?", (product_id,))
+            cursor.execute("DELETE FROM COMPOSICAO WHERE ID_PRODUTO = ?", (product_id,))
             if new_composition:
                 cursor.executemany(
-                    "INSERT INTO TCOMPOSICAO (ID_PRODUTO, ID_INSUMO, QUANTIDADE) VALUES (?, ?, ?)",
+                    "INSERT INTO COMPOSICAO (ID_PRODUTO, ID_INSUMO, QUANTIDADE) VALUES (?, ?, ?)",
                     [(product_id, item['id_insumo'], item['quantidade']) for item in new_composition]
                 )
         print(f"Composição do produto ID {product_id} atualizada com sucesso.")

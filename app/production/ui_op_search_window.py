@@ -5,7 +5,7 @@ from PySide6.QtWidgets import (
 )
 from PySide6.QtCore import Signal, Qt
 from PySide6.QtGui import QStandardItemModel, QStandardItem
-from . import order_operations
+from app.production import order_operations
 
 class OPSearchWindow(QWidget):
     op_selected = Signal(int)
@@ -38,7 +38,7 @@ class OPSearchWindow(QWidget):
         layout = QVBoxLayout()
         self.table_view = QTableView()
         self.table_model = QStandardItemModel()
-        self.table_model.setHorizontalHeaderLabels(["ID", "Data Criação", "Data Prevista", "Status"])
+        self.table_model.setHorizontalHeaderLabels(["ID", "Número", "Data Criação", "Data Prevista", "Status"])
         self.table_view.setModel(self.table_model)
         header = self.table_view.horizontalHeader()
         header.setSectionResizeMode(QHeaderView.ResizeToContents)
@@ -46,6 +46,7 @@ class OPSearchWindow(QWidget):
         self.table_view.setEditTriggers(QAbstractItemView.NoEditTriggers)
         self.table_view.verticalHeader().setVisible(False)
         self.table_view.setSortingEnabled(True)
+        self.table_view.setStyleSheet("QTableView::item:selected { background-color: #D3D3D3; color: black; }")
         self.table_view.doubleClicked.connect(self.handle_double_click)
         layout.addWidget(self.table_view)
         results_group.setLayout(layout)
@@ -59,6 +60,7 @@ class OPSearchWindow(QWidget):
         for op in ops:
             row = [
                 QStandardItem(str(op['ID'])),
+                QStandardItem(op.get('NUMERO', '')),
                 QStandardItem(op.get('DATA_CRIACAO', '')),
                 QStandardItem(op.get('DATA_PREVISTA', '')),
                 QStandardItem(op.get('STATUS', ''))
