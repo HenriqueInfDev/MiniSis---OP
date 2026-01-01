@@ -5,7 +5,7 @@ from PySide6.QtWidgets import (
     QPushButton, QTabWidget, QFormLayout, QMessageBox, QComboBox
 )
 from PySide6.QtGui import QRegularExpressionValidator
-from PySide6.QtCore import QRegularExpression
+from PySide6.QtCore import QRegularExpression, Qt
 from app.supplier.service import SupplierService
 from app.utils.ui_utils import show_error_message
 

@@ -1,6 +1,6 @@
 # app/production/composition_operations.py
 import sqlite3
-from ..database import get_db_manager
+from app.database.db import get_db_manager
 
 def validate_bom_item(product_id, material_id):
     """
