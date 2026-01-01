@@ -51,6 +51,7 @@ class MainWindow(QMainWindow):
         if self.item_search_window is None:
             from app.item.ui_search_window import ItemSearchWindow
             self.item_search_window = ItemSearchWindow()
+            self.item_search_window.setAttribute(Qt.WA_DeleteOnClose)
             self.item_search_window.destroyed.connect(lambda: setattr(self, 'item_search_window', None))
             self.item_search_window.show()
         else:
@@ -60,6 +61,7 @@ class MainWindow(QMainWindow):
         if self.supplier_search_window is None:
             from app.supplier.ui_search_window import SupplierSearchWindow
             self.supplier_search_window = SupplierSearchWindow()
+            self.supplier_search_window.setAttribute(Qt.WA_DeleteOnClose)
             self.supplier_search_window.destroyed.connect(lambda: setattr(self, 'supplier_search_window', None))
             self.supplier_search_window.show()
         else:
@@ -69,6 +71,7 @@ class MainWindow(QMainWindow):
         if self.stock_entry_window is None:
             from app.stock.ui_entry_window import StockEntryWindow
             self.stock_entry_window = StockEntryWindow()
+            self.stock_entry_window.setAttribute(Qt.WA_DeleteOnClose)
             self.stock_entry_window.destroyed.connect(lambda: setattr(self, 'stock_entry_window', None))
             self.stock_entry_window.show()
         else:
@@ -78,6 +81,7 @@ class MainWindow(QMainWindow):
         if self.production_order_window is None:
             from app.production.ui_order_window import ProductionOrderWindow
             self.production_order_window = ProductionOrderWindow()
+            self.production_order_window.setAttribute(Qt.WA_DeleteOnClose)
             self.production_order_window.destroyed.connect(lambda: setattr(self, 'production_order_window', None))
             self.production_order_window.show()
         else:
