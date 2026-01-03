@@ -22,24 +22,24 @@ class MainWindow(QMainWindow):
         registers_menu = menu_bar.addMenu("&Cadastros")
 
         from app.item.ui_search_window import ItemSearchWindow
-        self._add_menu_action(registers_menu, "Produtos...", "item_search_window", ItemSearchWindow)
+        self._add_menu_action(registers_menu, "Produtos", "item_search_window", ItemSearchWindow)
 
         from app.supplier.ui_search_window import SupplierSearchWindow
-        self._add_menu_action(registers_menu, "Fornecedores...", "supplier_search_window", SupplierSearchWindow)
+        self._add_menu_action(registers_menu, "Fornecedores", "supplier_search_window", SupplierSearchWindow)
 
         registers_menu.addSeparator()
 
         from app.item.ui_unit_window import UnitWindow
-        self._add_menu_action(registers_menu, "Unidades de Medida...", "unit_window", UnitWindow)
+        self._add_menu_action(registers_menu, "Unidades de Medida", "unit_window", UnitWindow)
 
         # Menu Movimento
         movement_menu = menu_bar.addMenu("&Movimento")
 
         from app.stock.ui_entry_search_window import EntrySearchWindow
-        self._add_menu_action(movement_menu, "Entrada de Insumos...", "stock_entry_window", EntrySearchWindow)
+        self._add_menu_action(movement_menu, "Entrada de Insumos", "stock_entry_window", EntrySearchWindow)
 
         from app.production.ui_order_window import ProductionOrderWindow
-        self._add_menu_action(movement_menu, "Ordem de Produção...", "production_order_window", ProductionOrderWindow)
+        self._add_menu_action(movement_menu, "Ordem de Produção", "production_order_window", ProductionOrderWindow)
 
         # Menu Configurações
         settings_menu = menu_bar.addMenu("&Configurações")

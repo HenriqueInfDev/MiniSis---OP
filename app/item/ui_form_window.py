@@ -124,8 +124,8 @@ class ItemFormWindow(QWidget):
         supplier_layout = QHBoxLayout()
         self.supplier_display = QLineEdit()
         self.supplier_display.setReadOnly(True)
-        self.supplier_display.setPlaceholderText("Selecione um fornecedor...")
-        self.search_supplier_button = QPushButton("Buscar...")
+        self.supplier_display.setPlaceholderText("Selecione um fornecedor")
+        self.search_supplier_button = QPushButton("Buscar")
         supplier_layout.addWidget(self.supplier_display)
         supplier_layout.addWidget(self.search_supplier_button)
 
@@ -167,7 +167,7 @@ class ItemFormWindow(QWidget):
         input_layout.addWidget(self.unit_label)
 
         # Botão de Busca
-        search_button = QPushButton("Buscar...")
+        search_button = QPushButton("Buscar")
         search_button.clicked.connect(self.open_material_search)
         input_layout.addWidget(search_button)
 
