@@ -17,8 +17,9 @@ class StockRepository:
             entry_id = cursor.lastrowid
             conn.commit()
             return entry_id
-        except sqlite3.Error:
+        except sqlite3.Error as e:
             conn.rollback()
+            print(f"Database error in create_entry: {e}")
             return None
 
     def update_entry_master(self, entry_id, entry_date, typing_date, note_number, observacao):

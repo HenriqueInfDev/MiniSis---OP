@@ -183,12 +183,7 @@ class DatabaseManager:
                 cursor.execute(f"ALTER TABLE {old_name} RENAME TO {new_name}")
 
         # Continue with other migrations
-        cursor.execute("PRAGMA table_info(ENTRADANOTA)")
-        columns_info = {column[1]: {'type': column[2], 'pk': column[5]} for column in cursor.fetchall()}
-
-        if 'DATA_DIGITACAO' not in columns_info:
-            cursor.execute('ALTER TABLE ENTRADANOTA ADD COLUMN DATA_DIGITACAO TEXT')
-            cursor.execute('UPDATE ENTRADANOTA SET DATA_DIGITACAO = DATA_ENTRADA WHERE DATA_DIGITACAO IS NULL')
+        self._migrate_entradanota_table(cursor)
 
         cursor.execute("PRAGMA table_info(FORNECEDOR)")
         supplier_columns = {col[1]: col for col in cursor.fetchall()}
@@ -218,6 +213,46 @@ class DatabaseManager:
         # O SQLite não tem um bom suporte para DROP COLUMN,
         # então deixaremos a coluna antiga em ENTRADANOTA por segurança,
         # mas ela não será mais usada pelo aplicativo.
+
+    def _table_exists(self, cursor, table_name):
+        cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name=?", (table_name,))
+        return cursor.fetchone() is not None
+
+    def _migrate_entradanota_table(self, cursor):
+        table_name = "ENTRADANOTA"
+        temp_table_name = f"{table_name}_temp_migration"
+
+        # 1. Verifica se a tabela ENTRADANOTA existe
+        if not self._table_exists(cursor, table_name):
+            return
+
+        # 2. Renomeia a tabela antiga
+        cursor.execute(f"ALTER TABLE {table_name} RENAME TO {temp_table_name}")
+
+        # 3. Cria a nova tabela com o esquema correto e sem a coluna ID_FORNECEDOR
+        cursor.execute('''
+            CREATE TABLE ENTRADANOTA (
+                ID INTEGER PRIMARY KEY AUTOINCREMENT,
+                DATA_ENTRADA TEXT NOT NULL,
+                DATA_DIGITACAO TEXT,
+                NUMERO_NOTA TEXT UNIQUE,
+                VALOR_TOTAL REAL,
+                OBSERVACAO TEXT,
+                STATUS TEXT NOT NULL CHECK(STATUS IN ('Em Aberto', 'Finalizada'))
+            )
+        ''')
+
+        # 4. Copia os dados da tabela antiga para a nova
+        # A nova tabela não tem ID_FORNECEDOR, então não o selecionamos.
+        cursor.execute(f"""
+            INSERT INTO {table_name} (ID, DATA_ENTRADA, DATA_DIGITACAO, NUMERO_NOTA, VALOR_TOTAL, OBSERVACAO, STATUS)
+            SELECT ID, DATA_ENTRADA, DATA_DIGITACAO, NUMERO_NOTA, VALOR_TOTAL, OBSERVACAO, STATUS
+            FROM {temp_table_name}
+        """)
+
+        # 5. Remove a tabela temporária antiga
+        cursor.execute(f"DROP TABLE {temp_table_name}")
+
 
 def get_db_manager():
     return DatabaseManager()
