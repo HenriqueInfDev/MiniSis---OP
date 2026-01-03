@@ -158,6 +158,27 @@ class DatabaseManager:
             UNIQUE (ID_ENTRADA, ID_INSUMO)
         )
         ''')
+        cursor.execute('''
+        CREATE TABLE IF NOT EXISTS SAIDA (
+            ID INTEGER PRIMARY KEY AUTOINCREMENT,
+            DATA_SAIDA TEXT NOT NULL,
+            VALOR_TOTAL REAL,
+            OBSERVACAO TEXT,
+            STATUS TEXT NOT NULL CHECK(STATUS IN ('Em Aberto', 'Finalizada'))
+        )
+        ''')
+        cursor.execute('''
+        CREATE TABLE IF NOT EXISTS SAIDA_ITENS (
+            ID INTEGER PRIMARY KEY AUTOINCREMENT,
+            ID_SAIDA INTEGER NOT NULL,
+            ID_PRODUTO INTEGER NOT NULL,
+            QUANTIDADE REAL NOT NULL,
+            VALOR_UNITARIO REAL NOT NULL,
+            FOREIGN KEY (ID_SAIDA) REFERENCES SAIDA (ID) ON DELETE RESTRICT,
+            FOREIGN KEY (ID_PRODUTO) REFERENCES ITEM (ID) ON DELETE RESTRICT,
+            UNIQUE (ID_SAIDA, ID_PRODUTO)
+        )
+        ''')
 
         unidades = [('Grama', 'g'), ('Quilograma', 'kg'), ('Mililitro', 'ml'), ('Litro', 'L'), ('Unidade', 'un')]
         for nome, sigla in unidades:

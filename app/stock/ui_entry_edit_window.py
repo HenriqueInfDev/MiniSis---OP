@@ -152,15 +152,22 @@ class EntryEditWindow(QWidget):
             else:
                 show_error_message(self, "Error", response["message"])
         else:
-            response = self.stock_service.create_entry(entry_date, typing_date, note_number, observacao)
-            if response["success"]:
-                self.current_entry_id = response["data"]
-                self.stock_service.update_entry_items(self.current_entry_id, items)
-                self.setWindowTitle(f"Editando Entrada #{self.current_entry_id}")
-                self.entry_id_display.setText(str(self.current_entry_id))
-                QMessageBox.information(self, "Sucesso", response["message"])
+            # Primeiro, cria a entrada mestre para obter um ID
+            create_response = self.stock_service.create_entry(entry_date, typing_date, note_number, observacao)
+            if create_response["success"]:
+                self.current_entry_id = create_response["data"]
+
+                # Agora, chama o update para salvar os itens e o valor total
+                update_response = self.stock_service.update_entry(self.current_entry_id, entry_date, typing_date, note_number, observacao, items)
+                if update_response["success"]:
+                    self.setWindowTitle(f"Editando Entrada #{self.current_entry_id}")
+                    self.entry_id_display.setText(str(self.current_entry_id))
+                    QMessageBox.information(self, "Sucesso", "Nota de entrada criada e salva com sucesso.")
+                else:
+                    # Se o update falhar, informa o utilizador. O cabeçalho foi criado.
+                    show_error_message(self, "Aviso", f"O cabeçalho da nota foi criado (ID: {self.current_entry_id}), mas falhou ao salvar os itens: {update_response['message']}")
             else:
-                show_error_message(self, "Error", response["message"])
+                show_error_message(self, "Error", create_response["message"])
 
     def load_entry_data(self):
         response = self.stock_service.get_entry_details(self.current_entry_id)

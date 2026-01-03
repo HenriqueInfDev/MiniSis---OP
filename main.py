@@ -41,6 +41,11 @@ class MainWindow(QMainWindow):
         from app.production.ui_order_window import ProductionOrderWindow
         self._add_menu_action(movement_menu, "Ordem de Produção", "production_order_window", ProductionOrderWindow)
 
+        movement_menu.addSeparator()
+
+        from app.sales.ui_sale_search_window import SaleSearchWindow
+        self._add_menu_action(movement_menu, "Saída de Produtos", "sale_search_window", SaleSearchWindow)
+
         # Menu Configurações
         settings_menu = menu_bar.addMenu("&Configurações")
 
