@@ -269,8 +269,8 @@ class EntryEditWindow(QWidget):
         total = item['QUANTIDADE'] * item['VALOR_UNITARIO']
         self.items_table.setItem(row, 6, NumericTableWidgetItem(f"{total:.2f}"))
 
-        # Coluna do fornecedor é editável
-        for col in [0, 1, 2, 6]:
+        # Colunas não editáveis
+        for col in [0, 1, 2]:
              self.items_table.item(row, col).setFlags(self.items_table.item(row, col).flags() & ~Qt.ItemIsEditable)
 
         self.items_table.blockSignals(False)
@@ -284,7 +284,8 @@ class EntryEditWindow(QWidget):
             self.items_table.removeRow(index)
 
     def on_cell_changed(self, row, column):
-        if column not in [4, 5, 6]: # Fornecedor, Quantidade, Valor Unit.
+        # As colunas relevantes são Quantidade (4), Valor Unit. (5), e Valor Total (6)
+        if column not in [4, 5, 6]:
             return
 
         self.items_table.blockSignals(True)
@@ -293,24 +294,24 @@ class EntryEditWindow(QWidget):
             unit_price_item = self.items_table.item(row, 5)
             total_price_item = self.items_table.item(row, 6)
 
-            qty = float(qty_item.text().replace(',', '.')) if qty_item and qty_item.text() else 0
-            unit_price = float(unit_price_item.text().replace(',', '.')) if unit_price_item and unit_price_item.text() else 0
-            total_price = float(total_price_item.text().replace(',', '.')) if total_price_item and total_price_item.text() else 0
+            qty = float(qty_item.text().replace(',', '.')) if qty_item and qty_item.text() else 0.0
+            unit_price = float(unit_price_item.text().replace(',', '.')) if unit_price_item and unit_price_item.text() else 0.0
+            total_price = float(total_price_item.text().replace(',', '.')) if total_price_item and total_price_item.text() else 0.0
 
-            if column == 4:  # Quantidade
+            if column == 4 or column == 5:  # Se Quantidade ou Valor Unitário mudou
                 new_total = qty * unit_price
                 total_price_item.setText(f"{new_total:.2f}")
-            elif column == 5:  # Valor Unitário
-                new_total = qty * unit_price
-                total_price_item.setText(f"{new_total:.2f}")
-            elif column == 6:  # Valor Total
+            elif column == 6:  # Se Valor Total mudou
                 if qty > 0:
                     new_unit_price = total_price / qty
                     unit_price_item.setText(f"{new_unit_price:.2f}")
                 else:
+                    # Se a quantidade for 0, não é possível calcular o preço unitário.
+                    # Poderíamos zerar ou deixar como está, dependendo da regra de negócio.
+                    # Vamos zerar por segurança.
                     unit_price_item.setText("0.00")
         except (ValueError, TypeError, ZeroDivisionError) as e:
-            print(f"Error in calculation: {e}")
+            print(f"Error in on_cell_changed: {e}")
         finally:
             self.items_table.blockSignals(False)
 
