@@ -5,12 +5,12 @@ class StockService:
     def __init__(self):
         self.stock_repository = StockRepository()
 
-    def create_entry(self, entry_date, typing_date, supplier_id, note_number, observacao):
-        if not all([entry_date, typing_date, supplier_id, note_number]):
+    def create_entry(self, entry_date, typing_date, note_number, observacao):
+        if not all([entry_date, typing_date, note_number]):
             return {"success": False, "message": "Todos os campos do cabeçalho são obrigatórios."}
 
         try:
-            entry_id = self.stock_repository.create_entry(entry_date, typing_date, supplier_id, note_number, observacao)
+            entry_id = self.stock_repository.create_entry(entry_date, typing_date, note_number, observacao)
             if entry_id:
                 return {"success": True, "data": entry_id, "message": "Nota de entrada criada com sucesso."}
             else:
@@ -18,12 +18,12 @@ class StockService:
         except Exception as e:
             return {"success": False, "message": f"Erro inesperado: {e}"}
 
-    def update_entry(self, entry_id, entry_date, typing_date, supplier_id, note_number, observacao, items):
-        if not all([entry_id, entry_date, typing_date, supplier_id, note_number]):
+    def update_entry(self, entry_id, entry_date, typing_date, note_number, observacao, items):
+        if not all([entry_id, entry_date, typing_date, note_number]):
             return {"success": False, "message": "Todos os campos do cabeçalho são obrigatórios."}
 
         try:
-            self.stock_repository.update_entry_master(entry_id, entry_date, typing_date, supplier_id, note_number, observacao)
+            self.stock_repository.update_entry_master(entry_id, entry_date, typing_date, note_number, observacao)
             self.stock_repository.update_entry_items(entry_id, items)
             return {"success": True, "message": "Nota de entrada atualizada com sucesso."}
         except Exception as e:
@@ -74,3 +74,13 @@ class StockService:
                 return {"success": False, "message": "Erro no banco de dados ao finalizar a entrada."}
         except Exception as e:
             return {"success": False, "message": f"Um erro inesperado ocorreu: {e}"}
+
+    def get_item_details(self, item_id):
+        try:
+            item = self.stock_repository.get_item_details(item_id)
+            if item:
+                return {"success": True, "data": item}
+            else:
+                return {"success": False, "message": "Item não encontrado."}
+        except Exception as e:
+            return {"success": False, "message": f"Erro ao buscar detalhes do item: {e}"}

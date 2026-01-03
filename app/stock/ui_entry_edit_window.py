@@ -10,6 +10,19 @@ from app.supplier.service import SupplierService
 from app.item.ui_search_window import ItemSearchWindow
 from app.supplier.ui_search_window import SupplierSearchWindow
 from app.utils.ui_utils import NumericTableWidgetItem, show_error_message
+from PySide6.QtWidgets import QStyledItemDelegate
+
+class SupplierDelegate(QStyledItemDelegate):
+    def createEditor(self, parent, option, index):
+        # Impede a criação de um editor padrão (como um QLineEdit)
+        return None
+
+    def editorEvent(self, event, model, option, index):
+        if event.type() == event.MouseButtonDblClick:
+            parent_window = self.parent().parent().parent()
+            parent_window.open_supplier_search_for_item(index.row())
+            return True
+        return super().editorEvent(event, model, option, index)
 
 class EntryEditWindow(QWidget):
     def __init__(self, entry_id=None):
@@ -54,15 +67,6 @@ class EntryEditWindow(QWidget):
         self.typing_date_input.setDateTime(QDateTime.currentDateTime())
         self.typing_date_input.setCalendarPopup(True)
 
-        supplier_layout = QHBoxLayout()
-        self.supplier_display = QLineEdit()
-        self.supplier_display.setReadOnly(True)
-        self.supplier_display.setPlaceholderText("Selecione um fornecedor")
-        self.search_supplier_button = QPushButton("Buscar")
-        self.search_supplier_button.clicked.connect(self.open_supplier_search)
-        supplier_layout.addWidget(self.supplier_display)
-        supplier_layout.addWidget(self.search_supplier_button)
-
         self.note_number_input = QLineEdit()
         self.observacao_input = QLineEdit()
         self.status_display = QLabel("Em Aberto")
@@ -70,7 +74,6 @@ class EntryEditWindow(QWidget):
         form.addRow("ID da Entrada:", self.entry_id_display)
         form.addRow("Data da Entrada:", self.date_input)
         form.addRow("Data de Digitação:", self.typing_date_input)
-        form.addRow("Fornecedor:", supplier_layout)
         form.addRow("Número da Nota:", self.note_number_input)
         form.addRow("Observação:", self.observacao_input)
         form.addRow("Status:", self.status_display)
@@ -80,8 +83,8 @@ class EntryEditWindow(QWidget):
         items_group = QGroupBox("Insumos da Nota")
         items_layout = QVBoxLayout()
         self.items_table = QTableWidget()
-        self.items_table.setColumnCount(6)
-        self.items_table.setHorizontalHeaderLabels(["ID Insumo", "Descrição", "Un.", "Quantidade", "Valor Unit.", "Valor Total"])
+        self.items_table.setColumnCount(7)
+        self.items_table.setHorizontalHeaderLabels(["ID Insumo", "Descrição", "Un.", "Fornecedor", "Quantidade", "Valor Unit.", "Valor Total"])
         self.items_table.verticalHeader().setVisible(False)
         self.items_table.setSelectionBehavior(QAbstractItemView.SelectRows)
         self.items_table.setColumnHidden(0, True)
@@ -89,6 +92,10 @@ class EntryEditWindow(QWidget):
         header = self.items_table.horizontalHeader()
         header.setSectionResizeMode(QHeaderView.ResizeToContents)
         header.setSectionResizeMode(1, QHeaderView.Stretch)
+
+        self.supplier_delegate = SupplierDelegate(self.items_table)
+        self.items_table.setItemDelegateForColumn(3, self.supplier_delegate)
+
         self.items_table.cellChanged.connect(self.on_cell_changed)
         items_layout.addWidget(self.items_table)
 
@@ -109,12 +116,10 @@ class EntryEditWindow(QWidget):
 
     def new_entry(self):
         self.current_entry_id = None
-        self.selected_supplier_id = None
         self.setWindowTitle("Nova Entrada de Insumo")
         self.entry_id_display.setText("(Nova)")
         self.date_input.setDate(QDate.currentDate())
         self.typing_date_input.setDateTime(QDateTime.currentDateTime())
-        self.supplier_display.clear()
         self.note_number_input.clear()
         self.observacao_input.clear()
         self.status_display.setText("Em Aberto")
@@ -127,26 +132,24 @@ class EntryEditWindow(QWidget):
         note_number = self.note_number_input.text()
         observacao = self.observacao_input.text()
 
-        if not self.selected_supplier_id:
-            show_error_message(self, "Error", "Por favor, selecione um fornecedor.")
-            return
-
         items = []
         for row in range(self.items_table.rowCount()):
+            supplier_id = self.items_table.item(row, 3).data(Qt.UserRole)
             items.append({
                 'id_insumo': int(self.items_table.item(row, 0).text()),
-                'quantidade': float(self.items_table.item(row, 3).text().replace(',', '.')),
-                'valor_unitario': float(self.items_table.item(row, 4).text().replace(',', '.'))
+                'id_fornecedor': supplier_id,
+                'quantidade': float(self.items_table.item(row, 4).text().replace(',', '.')),
+                'valor_unitario': float(self.items_table.item(row, 5).text().replace(',', '.'))
             })
 
         if self.current_entry_id:
-            response = self.stock_service.update_entry(self.current_entry_id, entry_date, typing_date, self.selected_supplier_id, note_number, observacao, items)
+            response = self.stock_service.update_entry(self.current_entry_id, entry_date, typing_date, note_number, observacao, items)
             if response["success"]:
                 QMessageBox.information(self, "Sucesso", response["message"])
             else:
                 show_error_message(self, "Error", response["message"])
         else:
-            response = self.stock_service.create_entry(entry_date, typing_date, self.selected_supplier_id, note_number, observacao)
+            response = self.stock_service.create_entry(entry_date, typing_date, note_number, observacao)
             if response["success"]:
                 self.current_entry_id = response["data"]
                 self.stock_service.update_entry_items(self.current_entry_id, items)
@@ -169,13 +172,6 @@ class EntryEditWindow(QWidget):
         self.date_input.setDate(QDate.fromString(master['DATA_ENTRADA'], "yyyy-MM-dd"))
         self.typing_date_input.setDateTime(QDateTime.fromString(master['DATA_DIGITACAO'], "yyyy-MM-dd HH:mm:ss"))
 
-        self.selected_supplier_id = master.get('ID_FORNECEDOR')
-        if self.selected_supplier_id:
-            supplier_resp = self.supplier_service.get_supplier_by_id(self.selected_supplier_id)
-            if supplier_resp["success"]:
-                supplier_data = supplier_resp["data"]
-                self.supplier_display.setText(supplier_data['NOME_FANTASIA'] or supplier_data['RAZAO_SOCIAL'])
-
         self.note_number_input.setText(master.get('NUMERO_NOTA', ''))
         self.observacao_input.setText(master.get('OBSERVACAO', ''))
         self.status_display.setText(master.get('STATUS', ''))
@@ -187,19 +183,22 @@ class EntryEditWindow(QWidget):
         if master.get('STATUS') == 'Finalizada':
             self.set_read_only(True)
 
-    def open_supplier_search(self):
+    def open_supplier_search_for_item(self, row):
+        self.current_editing_row = row
         if self.search_supplier_window is None:
             self.search_supplier_window = SupplierSearchWindow(selection_mode=True)
-            self.search_supplier_window.supplier_selected.connect(self.set_selected_supplier)
+            self.search_supplier_window.supplier_selected.connect(self.set_selected_supplier_for_item)
             self.search_supplier_window.destroyed.connect(lambda: setattr(self, 'search_supplier_window', None))
             self.search_supplier_window.show()
         else:
             self.search_supplier_window.activateWindow()
             self.search_supplier_window.raise_()
 
-    def set_selected_supplier(self, supplier_data):
-        self.selected_supplier_id = supplier_data['ID']
-        self.supplier_display.setText(supplier_data['NOME_FANTASIA'] or supplier_data['RAZAO_SOCIAL'])
+    def set_selected_supplier_for_item(self, supplier_data):
+        item = self.items_table.item(self.current_editing_row, 3)
+        item.setText(supplier_data['NOME_FANTASIA'] or supplier_data['RAZAO_SOCIAL'])
+        item.setData(Qt.UserRole, supplier_data['ID'])
+        self.search_supplier_window.close()
 
     def open_item_search(self):
         if self.search_item_window is None:
@@ -217,23 +216,52 @@ class EntryEditWindow(QWidget):
                 QMessageBox.warning(self, "Atenção", "Este insumo já está na lista.")
                 return
 
-        item = { 'ID_INSUMO': item_data['ID'], 'DESCRICAO': item_data['DESCRICAO'], 'SIGLA': item_data['SIGLA'], 'QUANTIDADE': 1.0, 'VALOR_UNITARIO': 0.0 }
-        self.add_item_to_table(item)
+        item_details = self.stock_service.get_item_details(item_data['ID'])
+        if not item_details["success"]:
+            show_error_message(self, "Erro", item_details["message"])
+            return
+
+        item = item_details["data"]
+
+        item_to_add = {
+            'ID_INSUMO': item['ID'],
+            'DESCRICAO': item['DESCRICAO'],
+            'SIGLA': item['SIGLA'],
+            'ID_FORNECEDOR': item.get('ID_FORNECEDOR_PADRAO'),
+            'FORNECEDOR': item.get('NOME_FANTASIA_PADRAO'),
+            'QUANTIDADE': 1.0,
+            'VALOR_UNITARIO': 0.0
+        }
+        self.add_item_to_table(item_to_add)
+
+        if not item_to_add['ID_FORNECEDOR']:
+            QMessageBox.information(self, "Atenção", f"O insumo '{item_to_add['DESCRICAO']}' não possui um fornecedor padrão. Por favor, selecione um manualmente.")
 
     def add_item_to_table(self, item, is_loading=False):
         self.items_table.blockSignals(True)
         row = self.items_table.rowCount()
         self.items_table.insertRow(row)
 
-        self.items_table.setItem(row, 0, QTableWidgetItem(str(item['ID_INSUMO'])))
-        self.items_table.setItem(row, 1, QTableWidgetItem(item['DESCRICAO']))
-        self.items_table.setItem(row, 2, QTableWidgetItem(item['SIGLA'].upper()))
-        self.items_table.setItem(row, 3, NumericTableWidgetItem(str(item['QUANTIDADE'])))
-        self.items_table.setItem(row, 4, NumericTableWidgetItem(f"{item['VALOR_UNITARIO']:.2f}"))
-        total = item['QUANTIDADE'] * item['VALOR_UNITARIO']
-        self.items_table.setItem(row, 5, NumericTableWidgetItem(f"{total:.2f}"))
+        id_item = QTableWidgetItem(str(item['ID_INSUMO']))
+        self.items_table.setItem(row, 0, id_item)
 
-        for col in [1, 2]:
+        desc_item = QTableWidgetItem(item['DESCRICAO'])
+        self.items_table.setItem(row, 1, desc_item)
+
+        unit_item = QTableWidgetItem(item['SIGLA'].upper())
+        self.items_table.setItem(row, 2, unit_item)
+
+        supplier_item = QTableWidgetItem(item.get('FORNECEDOR', ''))
+        supplier_item.setData(Qt.UserRole, item.get('ID_FORNECEDOR'))
+        self.items_table.setItem(row, 3, supplier_item)
+
+        self.items_table.setItem(row, 4, NumericTableWidgetItem(str(item['QUANTIDADE'])))
+        self.items_table.setItem(row, 5, NumericTableWidgetItem(f"{item['VALOR_UNITARIO']:.2f}"))
+        total = item['QUANTIDADE'] * item['VALOR_UNITARIO']
+        self.items_table.setItem(row, 6, NumericTableWidgetItem(f"{total:.2f}"))
+
+        # Coluna do fornecedor é editável
+        for col in [0, 1, 2, 6]:
              self.items_table.item(row, col).setFlags(self.items_table.item(row, col).flags() & ~Qt.ItemIsEditable)
 
         self.items_table.blockSignals(False)
@@ -247,23 +275,26 @@ class EntryEditWindow(QWidget):
             self.items_table.removeRow(index)
 
     def on_cell_changed(self, row, column):
+        if column not in [4, 5, 6]: # Fornecedor, Quantidade, Valor Unit.
+            return
+
         self.items_table.blockSignals(True)
         try:
-            qty_item = self.items_table.item(row, 3)
-            unit_price_item = self.items_table.item(row, 4)
-            total_price_item = self.items_table.item(row, 5)
+            qty_item = self.items_table.item(row, 4)
+            unit_price_item = self.items_table.item(row, 5)
+            total_price_item = self.items_table.item(row, 6)
 
             qty = float(qty_item.text().replace(',', '.')) if qty_item and qty_item.text() else 0
             unit_price = float(unit_price_item.text().replace(',', '.')) if unit_price_item and unit_price_item.text() else 0
             total_price = float(total_price_item.text().replace(',', '.')) if total_price_item and total_price_item.text() else 0
 
-            if column == 3:  # Quantidade
+            if column == 4:  # Quantidade
                 new_total = qty * unit_price
                 total_price_item.setText(f"{new_total:.2f}")
-            elif column == 4:  # Valor Unitário
+            elif column == 5:  # Valor Unitário
                 new_total = qty * unit_price
                 total_price_item.setText(f"{new_total:.2f}")
-            elif column == 5:  # Valor Total
+            elif column == 6:  # Valor Total
                 if qty > 0:
                     new_unit_price = total_price / qty
                     unit_price_item.setText(f"{new_unit_price:.2f}")
@@ -277,8 +308,6 @@ class EntryEditWindow(QWidget):
     def set_read_only(self, read_only):
         self.date_input.setReadOnly(read_only)
         self.typing_date_input.setReadOnly(read_only)
-        self.supplier_display.setReadOnly(True) # Always read-only
-        self.search_supplier_button.setDisabled(read_only)
 
         self.note_number_input.setReadOnly(read_only)
         self.items_table.setEditTriggers(QAbstractItemView.NoEditTriggers if read_only else QAbstractItemView.AllEditTriggers)
@@ -291,6 +320,23 @@ class EntryEditWindow(QWidget):
         if not self.current_entry_id:
             show_error_message(self, "Error", "Salve a nota de entrada antes de finalizá-la.")
             return
+
+        # Validações
+        for row in range(self.items_table.rowCount()):
+            supplier_id = self.items_table.item(row, 3).data(Qt.UserRole)
+            if not supplier_id:
+                show_error_message(self, "Erro de Validação", f"O item '{self.items_table.item(row, 1).text()}' não possui um fornecedor definido.")
+                return
+
+            quantity = float(self.items_table.item(row, 4).text().replace(',', '.'))
+            if quantity <= 0:
+                show_error_message(self, "Erro de Validação", f"A quantidade do item '{self.items_table.item(row, 1).text()}' deve ser maior que zero.")
+                return
+
+            unit_price = float(self.items_table.item(row, 5).text().replace(',', '.'))
+            if unit_price <= 0:
+                show_error_message(self, "Erro de Validação", f"O valor unitário do item '{self.items_table.item(row, 1).text()}' deve ser maior que zero.")
+                return
 
         reply = QMessageBox.question(
             self, "Confirmar Finalização", "Você tem certeza que deseja finalizar esta entrada?\nEsta ação atualizará o estoque e o custo dos insumos e não poderá ser desfeita.",

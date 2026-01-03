@@ -91,7 +91,6 @@ class DatabaseManager:
         cursor.execute('''
         CREATE TABLE IF NOT EXISTS ENTRADANOTA (
             ID INTEGER PRIMARY KEY AUTOINCREMENT,
-            ID_FORNECEDOR INTEGER,
             DATA_ENTRADA TEXT NOT NULL,
             DATA_DIGITACAO TEXT,
             NUMERO_NOTA TEXT UNIQUE,
@@ -150,10 +149,12 @@ class DatabaseManager:
             ID INTEGER PRIMARY KEY AUTOINCREMENT,
             ID_ENTRADA INTEGER NOT NULL,
             ID_INSUMO INTEGER NOT NULL,
+            ID_FORNECEDOR INTEGER NOT NULL,
             QUANTIDADE REAL NOT NULL,
             VALOR_UNITARIO REAL NOT NULL,
             FOREIGN KEY (ID_ENTRADA) REFERENCES ENTRADANOTA (ID) ON DELETE RESTRICT,
             FOREIGN KEY (ID_INSUMO) REFERENCES ITEM (ID) ON DELETE RESTRICT,
+            FOREIGN KEY (ID_FORNECEDOR) REFERENCES FORNECEDOR (ID) ON DELETE RESTRICT,
             UNIQUE (ID_ENTRADA, ID_INSUMO)
         )
         ''')
@@ -199,6 +200,24 @@ class DatabaseManager:
         for col in address_columns:
             if col not in supplier_columns:
                 cursor.execute(f'ALTER TABLE FORNECEDOR ADD COLUMN {col} TEXT')
+
+        # Migração para mover ID_FORNECEDOR para ENTRADANOTA_ITENS
+        cursor.execute("PRAGMA table_info(ENTRADANOTA_ITENS)")
+        entry_items_columns = {col[1] for col in cursor.fetchall()}
+        if 'ID_FORNECEDOR' not in entry_items_columns:
+            cursor.execute('ALTER TABLE ENTRADANOTA_ITENS ADD COLUMN ID_FORNECEDOR INTEGER REFERENCES FORNECEDOR(ID)')
+            # Tenta preencher com dados antigos, se existirem
+            cursor.execute("""
+                UPDATE ENTRADANOTA_ITENS
+                SET ID_FORNECEDOR = (
+                    SELECT ID_FORNECEDOR FROM ENTRADANOTA
+                    WHERE ENTRADANOTA.ID = ENTRADANOTA_ITENS.ID_ENTRADA
+                )
+            """)
+
+        # O SQLite não tem um bom suporte para DROP COLUMN,
+        # então deixaremos a coluna antiga em ENTRADANOTA por segurança,
+        # mas ela não será mais usada pelo aplicativo.
 
 def get_db_manager():
     return DatabaseManager()
