@@ -94,7 +94,7 @@ class DatabaseManager:
             ID INTEGER PRIMARY KEY AUTOINCREMENT,
             DATA_ENTRADA TEXT NOT NULL,
             DATA_DIGITACAO TEXT,
-            NUMERO_NOTA TEXT UNIQUE,
+            NUMERO_NOTA TEXT,
             VALOR_TOTAL REAL,
             OBSERVACAO TEXT,
             STATUS TEXT NOT NULL CHECK(STATUS IN ('Em Aberto', 'Finalizada')),
@@ -232,10 +232,6 @@ class DatabaseManager:
                 )
             """)
 
-        # O SQLite não tem um bom suporte para DROP COLUMN,
-        # então deixaremos a coluna antiga em ENTRADANOTA por segurança,
-        # mas ela não será mais usada pelo aplicativo.
-
     def _table_exists(self, cursor, table_name):
         cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name=?", (table_name,))
         return cursor.fetchone() is not None
@@ -257,7 +253,7 @@ class DatabaseManager:
                 ID INTEGER PRIMARY KEY AUTOINCREMENT,
                 DATA_ENTRADA TEXT NOT NULL,
                 DATA_DIGITACAO TEXT,
-                NUMERO_NOTA TEXT UNIQUE,
+                NUMERO_NOTA TEXT,
                 VALOR_TOTAL REAL,
                 OBSERVACAO TEXT,
                 STATUS TEXT NOT NULL CHECK(STATUS IN ('Em Aberto', 'Finalizada'))

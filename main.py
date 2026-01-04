@@ -1,7 +1,7 @@
 # main.py
 import sys
 from PySide6.QtWidgets import QApplication, QMainWindow, QLabel
-from PySide6.QtGui import QAction
+from PySide6.QtGui import QAction, QIcon
 from PySide6.QtCore import Qt
 from functools import partial
 
@@ -10,6 +10,7 @@ class MainWindow(QMainWindow):
         super().__init__()
         self.windows = {}
         self.setWindowTitle("GP - MiniSis")
+        self.setWindowIcon(QIcon('app/assets/logo.png'))
         self.setGeometry(100, 100, 1024, 768)
         self.setup_menus()
         self.setup_central_widget()
