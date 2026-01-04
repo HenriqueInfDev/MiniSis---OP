@@ -65,7 +65,7 @@ class StockRepository:
         """, (entry_id,)).fetchall()
         return {"master": dict(master), "items": [dict(row) for row in items]}
 
-    def list_entries(self, search_term="", search_field="id"):
+    def list_entries(self, search_term="", search_field="ID"):
         conn = self.db_manager.get_connection()
         query = """
             SELECT T.ID, T.DATA_ENTRADA, T.DATA_DIGITACAO, T.NUMERO_NOTA, T.VALOR_TOTAL, T.STATUS
@@ -73,14 +73,35 @@ class StockRepository:
         """
         params = ()
         if search_term:
-            field_map = {"ID": "T.ID", "Nº NOTA": "T.NUMERO_NOTA", "STATUS": "T.STATUS"}
+            # Mapeamento dos campos da UI para as colunas do banco de dados
+            field_map = {
+                "ID": "T.ID",
+                "Nº Nota": "T.NUMERO_NOTA",
+                "Data Entrada": "T.DATA_ENTRADA",
+                "Valor Total": "T.VALOR_TOTAL",
+                "Status": "T.STATUS"
+            }
             column = field_map.get(search_field, "T.ID")
-            if column == "T.ID" and search_term.isdigit():
-                query += f" WHERE {column} = ?"
-                params = (int(search_term),)
-            else:
+
+            # Tratamento especial para cada tipo de campo
+            if search_field == "ID":
+                if search_term.isdigit():
+                    query += f" WHERE {column} = ?"
+                    params = (int(search_term),)
+                else: # Se o ID não for um número, não retorna nada
+                    return []
+            elif search_field == "Valor Total":
+                try:
+                    # Permite pesquisar valores aproximados
+                    query += f" WHERE {column} >= ? AND {column} < ?"
+                    val = float(search_term.replace(',', '.'))
+                    params = (val, val + 1)
+                except ValueError:
+                    return [] # Se não for um número válido, não retorna nada
+            else: # Para Nº Nota, Data Entrada, Status
                 query += f" WHERE {column} LIKE ?"
                 params = (f'%{search_term}%',)
+
         query += " ORDER BY T.ID DESC"
         return [dict(row) for row in conn.execute(query, params).fetchall()]
 
