@@ -8,7 +8,7 @@ def create_op(numero, due_date, items_to_produce):
     try:
         current_date = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
         op_id = cursor.execute(
-            "INSERT INTO ORDEMPRODUCAO (NUMERO, DATA_CRIACAO, DATA_PREVISTA, STATUS) VALUES (?, ?, ?, 'Em aberto')",
+            "INSERT INTO ORDEMPRODUCAO (NUMERO, DATA_CRIACAO, DATA_PREVISTA, STATUS) VALUES (?, ?, ?, 'Em Andamento')",
             (numero, current_date, due_date)
         ).lastrowid
         for item in items_to_produce:
@@ -65,11 +65,11 @@ def finalize_op(op_id, produced_quantity):
             total_cost += cost
             
             # Dar entrada no produto acabado
-            increase_product_stock(op_id, item['ID_PRODUTO'], produced_quantity)
+            increase_product_stock(op_id, item['ID_PRODUTO'], produced_quantity, cost)
 
         # Atualizar a OP com o status, quantidade produzida e custo
         cursor.execute(
-            "UPDATE ORDEMPRODUCAO SET STATUS = 'Concluida', QUANTIDADE_PRODUZIDA = ?, CUSTO_TOTAL = ? WHERE ID = ?",
+            "UPDATE ORDEMPRODUcao SET STATUS = 'Concluída', QUANTIDADE_PRODUZIDA = ?, CUSTO_TOTAL = ? WHERE ID = ?",
             (produced_quantity, total_cost, op_id)
         )
         
@@ -86,13 +86,20 @@ def get_op_details(op_id):
     if not op_master:
         return None
     op_items = conn.execute("""
-        SELECT OPI.ID_PRODUTO, I.DESCRICAO, OPI.QUANTIDADE_PRODUZIR, U.SIGLA AS UNIDADE, I.CUSTO_MEDIO
+        SELECT OPI.ID_PRODUTO, I.DESCRICAO, OPI.QUANTIDADE_PRODUZIR, U.SIGLA AS UNIDADE
         FROM ORDEMPRODUCAO_ITENS OPI
         JOIN ITEM I ON OPI.ID_PRODUTO = I.ID
         JOIN UNIDADE U ON I.ID_UNIDADE = U.ID
         WHERE OPI.ID_ORDEM_PRODUCAO = ?
     """, (op_id,)).fetchall()
-    return {"master": dict(op_master), "items": [dict(row) for row in op_items]}
+    
+    items_with_cost = []
+    for item in op_items:
+        item_dict = dict(item)
+        item_dict['CUSTO_MEDIO'] = calculate_product_cost(item_dict['ID_PRODUTO'])
+        items_with_cost.append(item_dict)
+
+    return {"master": dict(op_master), "items": items_with_cost}
 
 def list_ops(search_term="", search_field="id"):
     conn = get_db_manager().get_connection()
@@ -141,10 +148,22 @@ def consume_stock_for_production(op_id, product_id, quantity):
         cursor.execute("INSERT INTO MOVIMENTO (ID_ITEM, TIPO_MOVIMENTO, QUANTIDADE, ID_ORDEM_PRODUCAO, DATA_MOVIMENTO) VALUES (?, 'Saída por OP', ?, ?, date('now'))", (insumo['ID_INSUMO'], consumed_quantity, op_id))
     return total_cost
 
-def increase_product_stock(op_id, product_id, quantity):
+def increase_product_stock(op_id, product_id, quantity, cost):
     conn = get_db_manager().get_connection()
     cursor = conn.cursor()
-    cursor.execute("UPDATE ITEM SET SALDO_ESTOQUE = SALDO_ESTOQUE + ? WHERE ID = ?", (quantity, product_id))
+    
+    # Get current stock and average cost
+    cursor.execute("SELECT SALDO_ESTOQUE, CUSTO_MEDIO FROM ITEM WHERE ID = ?", (product_id,))
+    current_stock, current_avg_cost = cursor.fetchone()
+
+    # Calculate new average cost
+    new_stock = current_stock + quantity
+    if new_stock > 0:
+        new_avg_cost = ((current_stock * current_avg_cost) + cost) / new_stock
+    else:
+        new_avg_cost = current_avg_cost
+
+    cursor.execute("UPDATE ITEM SET SALDO_ESTOQUE = ?, CUSTO_MEDIO = ? WHERE ID = ?", (new_stock, new_avg_cost, product_id))
     cursor.execute("INSERT INTO MOVIMENTO (ID_ITEM, TIPO_MOVIMENTO, QUANTIDADE, ID_ORDEM_PRODUCAO, DATA_MOVIMENTO) VALUES (?, 'Entrada por OP', ?, ?, date('now'))", (product_id, quantity, op_id))
 
 def return_stock_for_production(op_id, product_id, quantity):
@@ -169,3 +188,94 @@ def calculate_product_cost(product_id):
     """, (product_id,))
     result = cursor.fetchone()
     return result['CUSTO_TOTAL'] if result and result['CUSTO_TOTAL'] is not None else 0
+
+def cancel_op(op_id):
+    conn = get_db_manager().get_connection()
+    cursor = conn.cursor()
+    try:
+        cursor.execute("UPDATE ORDEMPRODUCAO SET STATUS = 'Cancelada' WHERE ID = ?", (op_id,))
+        conn.commit()
+        return True, "Ordem de Produção cancelada com sucesso."
+    except Exception as e:
+        conn.rollback()
+        print(f"Erro ao cancelar Ordem de Produção: {e}")
+        return False, str(e)
+
+def _reverse_production_stock_update(cursor, product_id, produced_quantity, production_cost):
+    # Get current stock and average cost
+    cursor.execute("SELECT SALDO_ESTOQUE, CUSTO_MEDIO FROM ITEM WHERE ID = ?", (product_id,))
+    current_stock, current_avg_cost = cursor.fetchone()
+
+    # Calculate new average cost by removing the production cost
+    new_stock = current_stock - produced_quantity
+    if new_stock > 0:
+        current_total_value = current_stock * current_avg_cost
+        new_avg_cost = (current_total_value - production_cost) / new_stock
+        if new_avg_cost < 0:
+            new_avg_cost = 0 # Cost should not be negative
+    else:
+        new_avg_cost = 0 # If stock is zero, cost is zero
+
+    cursor.execute("UPDATE ITEM SET SALDO_ESTOQUE = ?, CUSTO_MEDIO = ? WHERE ID = ?", (new_stock, new_avg_cost, product_id))
+
+
+def delete_op(op_id):
+    conn = get_db_manager().get_connection()
+    cursor = conn.cursor()
+    try:
+        # Get OP details before deleting
+        cursor.execute("SELECT * FROM ORDEMPRODUCAO WHERE ID = ?", (op_id,))
+        op_master = cursor.fetchone()
+        
+        if not op_master:
+            raise Exception("Ordem de Produção não encontrada.")
+
+        op_details = get_op_details(op_id)
+
+        status = op_master['STATUS']
+        
+        if status == 'Concluída':
+            produced_quantity = op_master['QUANTIDADE_PRODUZIDA']
+            total_cost = op_master['CUSTO_TOTAL']
+
+            if produced_quantity and produced_quantity > 0 and total_cost is not None:
+                for item in op_details['items']:
+                    product_id = item['ID_PRODUTO']
+                    
+                    # Revert stock and cost for the produced item
+                    _reverse_production_stock_update(cursor, product_id, produced_quantity, total_cost)
+                    
+                    # Return consumed components to stock
+                    cursor.execute("SELECT ID_INSUMO, QUANTIDADE FROM COMPOSICAO WHERE ID_PRODUTO = ?", (product_id,))
+                    composition = cursor.fetchall()
+                    for insumo in composition:
+                        returned_quantity = insumo['QUANTIDADE'] * produced_quantity
+                        cursor.execute("UPDATE ITEM SET SALDO_ESTOQUE = SALDO_ESTOQUE + ? WHERE ID = ?", (returned_quantity, insumo['ID_INSUMO']))
+
+        # Delete all movements related to this OP
+        cursor.execute("DELETE FROM MOVIMENTO WHERE ID_ORDEM_PRODUCAO = ?", (op_id,))
+        
+        # Delete items from the production order
+        cursor.execute("DELETE FROM ORDEMPRODUCAO_ITENS WHERE ID_ORDEM_PRODUCAO = ?", (op_id,))
+        
+        # Finally, delete the production order itself
+        cursor.execute("DELETE FROM ORDEMPRODUCAO WHERE ID = ?", (op_id,))
+        
+        conn.commit()
+        return True, "Ordem de Produção excluída com sucesso."
+    except Exception as e:
+        conn.rollback()
+        print(f"Erro ao excluir Ordem de Produção: {e}")
+        return False, str(e)
+
+def reopen_op(op_id):
+    conn = get_db_manager().get_connection()
+    cursor = conn.cursor()
+    try:
+        cursor.execute("UPDATE ORDEMPRODUCAO SET STATUS = 'Em Andamento' WHERE ID = ?", (op_id,))
+        conn.commit()
+        return True, "Ordem de Produção reaberta com sucesso."
+    except Exception as e:
+        conn.rollback()
+        print(f"Erro ao reabrir Ordem de Produção: {e}")
+        return False, str(e)

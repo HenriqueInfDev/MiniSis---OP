@@ -29,34 +29,49 @@ class ProductionOrderWindow(QWidget):
         self.main_layout = QVBoxLayout(self)
         # Header Buttons
         layout = QHBoxLayout()
-        self.new_button = QPushButton("Nova OP")
+        self.new_button = QPushButton("Novo")
         self.new_button.clicked.connect(self.new_op)
-        self.save_button = QPushButton("Salvar OP")
+        self.save_button = QPushButton("Salvar")
         self.save_button.clicked.connect(self.save_op)
-        self.finalize_button = QPushButton("Finalizar OP")
+        self.finalize_button = QPushButton("Finalizar")
         self.finalize_button.clicked.connect(self.prompt_finalize_op)
-        self.search_button = QPushButton("Pesquisar OP")
+        self.cancel_button = QPushButton("Cancelar")
+        self.cancel_button.clicked.connect(self.cancel_op)
+        self.delete_button = QPushButton("Excluir")
+        self.delete_button.clicked.connect(self.delete_op)
+        self.reopen_button = QPushButton("Reabrir")
+        self.reopen_button.clicked.connect(self.reopen_op)
+        self.search_button = QPushButton("Pesquisar")
         self.search_button.clicked.connect(self.open_op_search)
         layout.addWidget(self.new_button)
         layout.addWidget(self.save_button)
         layout.addWidget(self.finalize_button)
+        layout.addWidget(self.cancel_button)
+        layout.addWidget(self.delete_button)
+        layout.addWidget(self.reopen_button)
         layout.addStretch()
         layout.addWidget(self.search_button)
         self.main_layout.addLayout(layout)
         # Main Form
         form_group = QGroupBox("Dados da Ordem de Produção")
-        layout = QFormLayout()
+        self.form_layout = QFormLayout()
         self.op_id_display = QLabel("(Nova)")
         self.numero_input = QLineEdit()
         self.due_date_input = QDateEdit(calendarPopup=True)
         self.due_date_input.setDisplayFormat(BRAZILIAN_DATE_FORMAT)
         self.due_date_input.setDate(QDate.currentDate().addDays(7))
         self.status_display = QLabel("Em aberto")
-        layout.addRow("ID da OP:", self.op_id_display)
-        layout.addRow("Número:", self.numero_input)
-        layout.addRow("Data Prevista:", self.due_date_input)
-        layout.addRow("Status:", self.status_display)
-        form_group.setLayout(layout)
+        self.total_cost_display = QLabel("0.00")
+        self.produced_qty_display = QLabel("")
+        self.yield_display = QLabel("")
+        self.form_layout.addRow("ID da OP:", self.op_id_display)
+        self.form_layout.addRow("Número:", self.numero_input)
+        self.form_layout.addRow("Data Prevista:", self.due_date_input)
+        self.form_layout.addRow("Status:", self.status_display)
+        self.form_layout.addRow("Custo Total da OP:", self.total_cost_display)
+        self.form_layout.addRow("Quantidade Produzida:", self.produced_qty_display)
+        self.form_layout.addRow("Rendimento (%):", self.yield_display)
+        form_group.setLayout(self.form_layout)
         self.main_layout.addWidget(form_group)
         # Items Group
         items_group = QGroupBox("Produtos a Produzir")
@@ -76,13 +91,13 @@ class ProductionOrderWindow(QWidget):
         self.items_table.itemChanged.connect(self.update_total_cost)
         layout.addWidget(self.items_table)
         buttons_layout = QHBoxLayout()
-        add_item_button = QPushButton("Adicionar Produto")
-        add_item_button.clicked.connect(self.open_item_search)
-        remove_item_button = QPushButton("Remover Produto")
-        remove_item_button.clicked.connect(self.remove_item)
+        self.add_item_button = QPushButton("Adicionar Produto")
+        self.add_item_button.clicked.connect(self.open_item_search)
+        self.remove_item_button = QPushButton("Remover Produto")
+        self.remove_item_button.clicked.connect(self.remove_item)
         buttons_layout.addStretch()
-        buttons_layout.addWidget(add_item_button)
-        buttons_layout.addWidget(remove_item_button)
+        buttons_layout.addWidget(self.add_item_button)
+        buttons_layout.addWidget(self.remove_item_button)
         layout.addLayout(buttons_layout)
         items_group.setLayout(layout)
         self.main_layout.addWidget(items_group)
@@ -95,6 +110,13 @@ class ProductionOrderWindow(QWidget):
         self.due_date_input.setDate(QDate.currentDate().addDays(7))
         self.status_display.setText("Em aberto")
         self.items_table.setRowCount(0)
+        
+        self.produced_qty_display.setVisible(False)
+        self.yield_display.setVisible(False)
+        self.form_layout.labelForField(self.produced_qty_display).setVisible(False)
+        self.form_layout.labelForField(self.yield_display).setVisible(False)
+
+        self.set_read_only(False)
         self.update_button_states()
 
     def save_op(self):
@@ -109,18 +131,17 @@ class ProductionOrderWindow(QWidget):
         if self.current_op_id:
             if order_operations.update_op(self.current_op_id, numero, due_date, items):
                 QMessageBox.information(self, "Sucesso", "Ordem de Produção atualizada.")
+                self.load_op_data()
             else:
                 QMessageBox.critical(self, "Erro", "Não foi possível atualizar a Ordem de Produção.")
         else:
             new_id = order_operations.create_op(numero, due_date, items)
             if new_id:
                 self.current_op_id = new_id
-                self.setWindowTitle(f"Editando Ordem de Produção #{new_id}")
-                self.op_id_display.setText(str(new_id))
                 QMessageBox.information(self, "Sucesso", f"Ordem de Produção #{new_id} criada.")
+                self.load_op_data()
             else:
                 QMessageBox.critical(self, "Erro", "Não foi possível criar a Ordem de Produção.")
-        self.update_button_states()
 
     def load_op_data(self):
         if not self.current_op_id: return
@@ -133,9 +154,33 @@ class ProductionOrderWindow(QWidget):
             self.status_display.setText(master.get('STATUS', ''))
             if master.get('DATA_PREVISTA'):
                 self.due_date_input.setDate(QDate.fromString(master['DATA_PREVISTA'], "yyyy-MM-dd"))
+            
             self.items_table.setRowCount(0)
+            total_planned_qty = 0
             for item in details['items']:
                 self.add_item_to_table(item)
+                total_planned_qty += item['QUANTIDADE_PRODUZIR']
+
+            is_concluida = master['STATUS'] == 'Concluída'
+            is_cancelada = master['STATUS'] == 'Cancelada'
+
+            self.produced_qty_display.setVisible(is_concluida)
+            self.yield_display.setVisible(is_concluida)
+            self.form_layout.labelForField(self.produced_qty_display).setVisible(is_concluida)
+            self.form_layout.labelForField(self.yield_display).setVisible(is_concluida)
+
+            if is_concluida:
+                produced_qty = master.get('QUANTIDADE_PRODUZIDA', 0)
+                self.produced_qty_display.setText(f"{produced_qty:.2f}")
+                
+                if total_planned_qty > 0:
+                    yield_percent = (produced_qty / total_planned_qty) * 100 if produced_qty else 0
+                    self.yield_display.setText(f"{yield_percent:.2f}%")
+                else:
+                    self.yield_display.setText("N/A")
+
+            self.set_read_only(is_concluida or is_cancelada)
+
         self.update_button_states()
 
     def open_item_search(self):
@@ -182,7 +227,7 @@ class ProductionOrderWindow(QWidget):
         self.items_table.setItem(row, 3, unit_item)
         self.items_table.setItem(row, 4, cost_item)
         self.items_table.setItem(row, 5, total_cost_item)
-        self.update_total_cost(qty_item)
+        self.update_total_cost()
 
     def remove_item(self):
         rows = self.items_table.selectionModel().selectedRows()
@@ -208,18 +253,36 @@ class ProductionOrderWindow(QWidget):
         self.load_op_data()
 
     def update_button_states(self):
-        is_saved = self.current_op_id is not None
-        is_concluida = self.status_display.text() == 'Concluida'
-        self.save_button.setEnabled(not is_concluida)
-        self.finalize_button.setEnabled(is_saved and not is_concluida)
+        status = self.status_display.text()
+        is_new = self.current_op_id is None
+
+        # Default state for all buttons is disabled
+        self.save_button.setEnabled(False)
+        self.finalize_button.setEnabled(False)
+        self.cancel_button.setEnabled(False)
+        self.delete_button.setEnabled(False)
+        self.reopen_button.setEnabled(False)
+
+        if is_new or status == 'Em Andamento':
+            # Active state: New or in-progress orders
+            self.save_button.setEnabled(True)
+            self.finalize_button.setEnabled(not is_new)
+            self.cancel_button.setEnabled(not is_new)
+        elif status == 'Cancelada':
+            # Cancelled state
+            self.delete_button.setEnabled(True)
+            self.reopen_button.setEnabled(True)
+        elif status == 'Concluída':
+            # Completed state
+            self.delete_button.setEnabled(True)
 
     def prompt_finalize_op(self):
         if not self.current_op_id:
             return
 
-        produced_qty, ok = QInputDialog.getDouble(self, "Finalizar Ordem de Produção", 
-                                                  "Quantidade produzida:", 
-                                                  decimals=2, min=0)
+        produced_qty, ok = QInputDialog.getDouble(self, "Finalizar Ordem de Produção",
+                                                  "Quantidade produzida:",
+                                                  0, 0, 1000000, 2)
         
         if ok:
             success, message = order_operations.finalize_op(self.current_op_id, produced_qty)
@@ -229,13 +292,77 @@ class ProductionOrderWindow(QWidget):
             else:
                 QMessageBox.critical(self, "Erro", message)
 
-    def update_total_cost(self, item):
-        if item.column() == 2:  # Quantity column
-            row = item.row()
-            quantity = float(item.text())
+    def update_total_cost(self, item=None):
+        total_op_cost = 0
+        for row in range(self.items_table.rowCount()):
+            quantity_item = self.items_table.item(row, 2)
             cost_item = self.items_table.item(row, 4)
-            if cost_item:
-                unit_cost = float(cost_item.text())
-                total_cost = quantity * unit_cost
-                total_cost_item = self.items_table.item(row, 5)
-                total_cost_item.setText(f"{total_cost:.2f}")
+            total_cost_item = self.items_table.item(row, 5)
+
+            if quantity_item and cost_item and total_cost_item:
+                try:
+                    quantity = float(quantity_item.text())
+                    unit_cost = float(cost_item.text())
+                    total_cost = quantity * unit_cost
+                    total_cost_item.setText(f"{total_cost:.2f}")
+                    total_op_cost += total_cost
+                except ValueError:
+                    # Handle cases where conversion to float fails
+                    pass
+        self.total_cost_display.setText(f"{total_op_cost:.2f}")
+
+    def cancel_op(self):
+        if not self.current_op_id:
+            return
+
+        reply = QMessageBox.question(self, 'Cancelar Ordem de Produção',
+                                     "Tem certeza que deseja cancelar esta Ordem de Produção?",
+                                     QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
+
+        if reply == QMessageBox.Yes:
+            success, message = order_operations.cancel_op(self.current_op_id)
+            if success:
+                QMessageBox.information(self, "Sucesso", message)
+                self.load_op_data()
+            else:
+                QMessageBox.critical(self, "Erro", message)
+
+    def set_read_only(self, read_only):
+        self.numero_input.setReadOnly(read_only)
+        self.due_date_input.setReadOnly(read_only)
+        self.items_table.setEditTriggers(QAbstractItemView.NoEditTriggers if read_only else QAbstractItemView.AllEditTriggers)
+        
+        self.add_item_button.setEnabled(not read_only)
+        self.remove_item_button.setEnabled(not read_only)
+
+    def delete_op(self):
+        if not self.current_op_id:
+            return
+
+        reply = QMessageBox.question(self, 'Excluir Ordem de Produção',
+                                     "Tem certeza que deseja excluir esta Ordem de Produção? Esta ação não pode ser desfeita.",
+                                     QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
+
+        if reply == QMessageBox.Yes:
+            success, message = order_operations.delete_op(self.current_op_id)
+            if success:
+                QMessageBox.information(self, "Sucesso", message)
+                self.new_op()  # Clear the form after deletion
+            else:
+                QMessageBox.critical(self, "Erro", message)
+
+    def reopen_op(self):
+        if not self.current_op_id:
+            return
+
+        reply = QMessageBox.question(self, 'Reabrir Ordem de Produção',
+                                     "Tem certeza que deseja reabrir esta Ordem de Produção?",
+                                     QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
+
+        if reply == QMessageBox.Yes:
+            success, message = order_operations.reopen_op(self.current_op_id)
+            if success:
+                QMessageBox.information(self, "Sucesso", message)
+                self.load_op_data()
+            else:
+                QMessageBox.critical(self, "Erro", message)

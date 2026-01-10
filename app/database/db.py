@@ -21,7 +21,9 @@ class DatabaseManager:
             self.initialized = True
 
     def _get_db_path(self):
-        return "Gestão de Produção/Dados/DADOS.DB"
+        # Build a path relative to the project root
+        project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
+        return os.path.join(project_root, "Gestão de Produção", "Dados", "DADOS.DB")
 
     def initialize_database(self):
         db_dir = os.path.dirname(self.db_path)
@@ -72,7 +74,7 @@ class DatabaseManager:
                                 FOREIGN KEY (ID_INSUMO) REFERENCES ITEM (ID) ON DELETE RESTRICT, UNIQUE (ID_PRODUTO, ID_INSUMO) )''',
             "ORDEMPRODUCAO": '''CREATE TABLE IF NOT EXISTS ORDEMPRODUCAO (
                                     ID INTEGER PRIMARY KEY AUTOINCREMENT, NUMERO TEXT, DATA_CRIACAO TEXT NOT NULL,
-                                    DATA_PREVISTA TEXT, STATUS TEXT NOT NULL CHECK(STATUS IN ('Em aberto', 'Concluida', 'Cancelada')),
+                                    DATA_PREVISTA TEXT, STATUS TEXT NOT NULL CHECK(STATUS IN ('Em Andamento', 'Concluída', 'Cancelada')),
                                     QUANTIDADE_PRODUZIDA REAL, CUSTO_TOTAL REAL )''',
             "ORDEMPRODUCAO_ITENS": '''CREATE TABLE IF NOT EXISTS ORDEMPRODUCAO_ITENS (
                                         ID INTEGER PRIMARY KEY AUTOINCREMENT, ID_ORDEM_PRODUCAO INTEGER NOT NULL,
@@ -182,8 +184,8 @@ class DatabaseManager:
             INSERT INTO ORDEMPRODUCAO (ID, NUMERO, DATA_CRIACAO, DATA_PREVISTA, STATUS)
             SELECT ID, NUMERO, DATA_CRIACAO, DATA_PREVISTA,
                    CASE
-                       WHEN STATUS = 'Planejada' THEN 'Em aberto'
-                       WHEN STATUS = 'Concluída' THEN 'Concluida'
+                       WHEN STATUS = 'Planejada' THEN 'Em Andamento'
+                       WHEN STATUS = 'Concluída' THEN 'Concluída'
                        ELSE STATUS
                    END
             FROM {temp_table}
