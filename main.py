@@ -40,6 +40,9 @@ class MainWindow(QMainWindow):
         self._add_menu_action(movement_menu, "Entrada de Insumos", "stock_entry_window", EntrySearchWindow)
 
         movement_menu.addSeparator()
+
+        from app.production_line.ui_line_list_window import LineListWindow
+        self._add_menu_action(movement_menu, "Linhas de Produção", "line_list_window", LineListWindow)
         
         from app.production.ui_op_search_window import OPSearchWindow
         self._add_menu_action(movement_menu, "Ordem de Produção", "op_search_window", OPSearchWindow)

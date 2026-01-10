@@ -2,14 +2,14 @@
 from datetime import datetime
 from app.database.db import get_db_manager
 
-def create_op(numero, due_date, items_to_produce):
+def create_op(numero, due_date, items_to_produce, id_linha_producao=None):
     conn = get_db_manager().get_connection()
     cursor = conn.cursor()
     try:
         current_date = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
         op_id = cursor.execute(
-            "INSERT INTO ORDEMPRODUCAO (NUMERO, DATA_CRIACAO, DATA_PREVISTA, STATUS) VALUES (?, ?, ?, 'Em Andamento')",
-            (numero, current_date, due_date)
+            "INSERT INTO ORDEMPRODUCAO (NUMERO, DATA_CRIACAO, DATA_PREVISTA, STATUS, ID_LINHA_PRODUCAO) VALUES (?, ?, ?, 'Em Andamento', ?)",
+            (numero, current_date, due_date, id_linha_producao)
         ).lastrowid
         for item in items_to_produce:
             cursor.execute(
